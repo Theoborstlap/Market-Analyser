@@ -6,12 +6,13 @@ import io
 import math
 import os
 import sys
+import threading
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import Body, FastAPI, Query, WebSocket
+from fastapi import Body, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -105,6 +106,7 @@ from telegram_bot import (
 )
 
 SCAN_STATE: Dict[str, Any] = {"progress": 100, "status": "COMPLETE", "cached_dashboard": None, "cached_ts": 0.0}
+_DASHBOARD_LOCK = threading.Lock()
 
 
 def _get_sast_clock() -> Dict[str, Any]:
@@ -504,6 +506,14 @@ def _invalidate_jse_cache() -> None:
 
 
 def build_full_dashboard_state(force_refresh: bool = False, account_balance_override: Optional[float] = None) -> Dict[str, Any]:
+    with _DASHBOARD_LOCK:
+        return _build_full_dashboard_state_unlocked(
+            force_refresh=force_refresh,
+            account_balance_override=account_balance_override,
+        )
+
+
+def _build_full_dashboard_state_unlocked(force_refresh: bool = False, account_balance_override: Optional[float] = None) -> Dict[str, Any]:
     now_ts = time.time()
     if (
         not force_refresh
@@ -1327,6 +1337,9 @@ def _paper_lab_daemon_loop(stop_event: threading.Event) -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    warmup_task = asyncio.create_task(
+        asyncio.to_thread(build_full_dashboard_state, False, None)
+    )
     paper_stop_event = threading.Event()
     paper_thread = threading.Thread(
         target=_paper_lab_daemon_loop,
@@ -1344,6 +1357,7 @@ async def lifespan(_app: FastAPI):
     )
     yield
     paper_stop_event.set()
+    warmup_task.cancel()
     worker_task.cancel()
 
 
@@ -1585,7 +1599,11 @@ async def get_dashboard(
     refresh: bool = Query(default=False),
     account_balance: Optional[float] = Query(default=None),
 ):
-    return build_full_dashboard_state(force_refresh=refresh, account_balance_override=account_balance)
+    return await asyncio.to_thread(
+        build_full_dashboard_state,
+        refresh,
+        account_balance,
+    )
 
 
 @app.get("/api/barbell-plan")
@@ -2052,8 +2070,26 @@ async def settle_trading_memory_decision(decision_id: str, realized_return_pct: 
 @app.websocket("/ws/live")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
-    await ws.send_json({"type": "SCAN_PROGRESS", "progress": SCAN_STATE["progress"]})
-    await ws.close()
+    try:
+        await ws.send_json({"type": "SCAN_PROGRESS", "progress": SCAN_STATE["progress"]})
+        while True:
+            cached = SCAN_STATE.get("cached_dashboard")
+            if cached is None:
+                cached = await asyncio.to_thread(build_full_dashboard_state, False, None)
+            await ws.send_json({
+                "type": "JSE_LIVE_TICK",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "progress": SCAN_STATE["progress"],
+                "macro": cached.get("macro"),
+                "session_status": cached.get("session_status"),
+                "capital_ledger": cached.get("capital_ledger"),
+                "activeTrades": cached.get("activeTrades"),
+            })
+            await asyncio.sleep(5.0)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
