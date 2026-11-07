@@ -26,6 +26,7 @@ build/
 *.sqlite3
 *.db-journal
 *.log
+.runtime_logs/
 .DS_Store
 
 # Tool artifacts
