@@ -1,0 +1,33 @@
+# Node dependencies & package locks
+**/node_modules/**
+**/node_modules/
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build & Vite artifacts
+**/dist/**
+**/.vite/**
+**/.turbo/**
+**/.next/**
+build/
+
+# Python virtual environments & bytecode
+**/.venv/**
+**/venv/**
+**/env/**
+**/__pycache__/**
+*.py[cod]
+
+# Databases & local state
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.log
+.DS_Store
+
+# Tool artifacts
+graphify-out/
+.graphify/
