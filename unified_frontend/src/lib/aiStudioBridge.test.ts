@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installAiStudioBridge } from "./aiStudioBridge";
+import { installAiStudioBridge } from "./aiStudioBridge.ts";
 
 test("installAiStudioBridge survives getter-only non-configurable window.fetch and serves offline endpoints", async () => {
   const fakeWindow: any = {

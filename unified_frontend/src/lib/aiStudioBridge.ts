@@ -1,4 +1,4 @@
-import rawSnapshot from "./offlineSnapshot.json";
+import rawSnapshot from "./offlineSnapshot.json" with { type: "json" };
 
 const LS_CLOUD_BACKEND_KEY = "sovereign_cloud_backend_url";
 const LS_STATE_CACHE_PREFIX = "sovereign_aistudio_state_v13_";
