@@ -10,6 +10,7 @@ What this module does now:
   5. Earnings dates from yfinance, fetched in a background thread (unknown is reported as unknown).
   6. No economic calendar, SEC, Finviz, options or WSB feed is connected: those fields are UNAVAILABLE.
 """
+import asyncio
 import json
 import math
 import ssl
