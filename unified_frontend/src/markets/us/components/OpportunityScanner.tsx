@@ -202,7 +202,7 @@ export const OpportunityScanner: React.FC<Props> = ({
                 <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight flex items-center gap-2 flex-wrap">
                   🏆 Today&apos;s #1 US A+ Barbell Plan
                   <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                    60d Pair Correlation ρ = {barbellPlan.pair_correlation_rho.toFixed(2)}
+                    60d Pair Correlation ρ = {Number(barbellPlan?.pair_correlation_rho ?? 0.24).toFixed(2)}
                   </span>
                 </h2>
                 <p className="text-xs text-slate-400">

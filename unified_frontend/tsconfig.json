@@ -20,5 +20,6 @@
       "@crypto/*": ["./src/markets/crypto/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["**/*.test.ts"]
 }

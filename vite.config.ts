@@ -1,12 +1,15 @@
-import { defineConfig } from "vite";
+import { defineConfig, Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
 function silentOfflineProxy(proxy: any) {
   proxy.on("error", (_err: any, _req: any, res: any) => {
     if (res && typeof res.writeHead === "function" && !res.headersSent) {
-      res.writeHead(503, { "Content-Type": "text/plain" });
-      res.end("Offline");
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "X-Sovereign-Offline": "1",
+      });
+      res.end(JSON.stringify({ ok: false, offline: true }));
     } else if (res && typeof res.end === "function") {
       try {
         res.end();
@@ -17,8 +20,35 @@ function silentOfflineProxy(proxy: any) {
   });
 }
 
+function sovereignBridgeTransformPlugin(): Plugin {
+  return {
+    name: "sovereign-aistudio-bridge-transform",
+    enforce: "pre",
+    transform(code: string, id: string) {
+      const cleanId = id.split("?")[0].replace(/\\/g, "/");
+      if (
+        !cleanId.includes("/unified_frontend/src/") ||
+        cleanId.endsWith("/aiStudioBridge.ts") ||
+        cleanId.endsWith("/initBridge.ts") ||
+        (!cleanId.endsWith(".ts") && !cleanId.endsWith(".tsx"))
+      ) {
+        return null;
+      }
+      let next = code.replace(
+        /(?<![.\w$])fetch\s*\(/g,
+        "((globalThis as any).__sovereignFetch || fetch)("
+      );
+      next = next.replace(
+        /\bnew\s+WebSocket\s*\(/g,
+        "new ((globalThis as any).__SovereignWebSocket || WebSocket)("
+      );
+      return next !== code ? { code: next, map: null } : null;
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [sovereignBridgeTransformPlugin(), react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./unified_frontend/src"),
@@ -28,6 +58,8 @@ export default defineConfig({
     },
   },
   server: {
+    port: 3000,
+    host: "0.0.0.0",
     proxy: {
       "/engine/jse/api": {
         target: "http://127.0.0.1:8000",

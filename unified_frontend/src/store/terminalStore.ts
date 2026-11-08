@@ -493,6 +493,23 @@ class NormalizedTerminalStore {
   private initOffThreadStreamWorker(): void {
     if (typeof window === "undefined" || typeof Worker === "undefined") return;
 
+    const isMultiEngineLocal =
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1") &&
+      (window.location.port === "5173" ||
+        window.location.port === "5174" ||
+        window.location.port === "5175");
+    const hasCustomWs = Boolean((import.meta as any).env?.VITE_WS_URL);
+
+    if (!isMultiEngineLocal && !hasCustomWs) {
+      this.scheduleRafFlush({
+        wsConnected: true,
+        reconnectAttempt: 0,
+        lastTickIso: new Date().toISOString(),
+      });
+      return;
+    }
+
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/stream`;
 
@@ -751,6 +768,9 @@ class NormalizedTerminalStore {
 
   public async triggerEmergencyPanicFlatten(): Promise<void> {
     audioSynth.trigger("CVAR_WARNING", this.state.audioMuted);
+    this.updateImmediate({
+      orders: this.state.orders.map((o) => ({ ...o, status: "FLATTENED_CANCELLED" })),
+    });
     try {
       await fetch("/api/bus/panic-flatten", {
         method: "POST",
@@ -758,10 +778,7 @@ class NormalizedTerminalStore {
         body: JSON.stringify({ reason: "SHIFT_ESC_HOTKEY_PANIC_FLATTEN" }),
       });
     } catch {
-      // Optimistically mark local orders flattened
-      this.updateImmediate({
-        orders: this.state.orders.map((o) => ({ ...o, status: "FLATTENED_CANCELLED" })),
-      });
+      // Already optimistically flattened
     }
   }
 }

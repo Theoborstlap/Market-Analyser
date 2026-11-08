@@ -24,7 +24,10 @@ function loadMarketState(market: "jse" | "us" | "crypto", fallback: any): any {
     const saved = window.localStorage.getItem(`${LS_STATE_CACHE_PREFIX}${market}`);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed === "object") {
+      const hasSignals =
+        (Array.isArray(parsed?.signals) && parsed.signals.length > 0) ||
+        (Array.isArray(parsed?.opportunities) && parsed.opportunities.length > 0);
+      if (parsed && typeof parsed === "object" && hasSignals) {
         return parsed;
       }
     }
@@ -326,9 +329,16 @@ export function installAiStudioBridge(): void {
   if ((window as any).__SOVEREIGN_AISTUDIO_BRIDGE_INSTALLED__) return;
   (window as any).__SOVEREIGN_AISTUDIO_BRIDGE_INSTALLED__ = true;
 
-  const originalFetch = window.fetch.bind(window);
+  const nativeFetch =
+    typeof window.fetch === "function" ? window.fetch.bind(window) : undefined;
 
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  let localBackendChecked = false;
+  let localBackendOnline = false;
+
+  const sovereignFetch = async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> => {
     const rawUrl =
       typeof input === "string"
         ? input
@@ -343,13 +353,16 @@ export function installAiStudioBridge(): void {
       rawUrl.includes("/api/bus/");
 
     if (!isEngineCall) {
-      return originalFetch(input, init);
+      if (nativeFetch) {
+        return nativeFetch(input, init);
+      }
+      return jsonResponse({ ok: false }, 500);
     }
 
-    // Rewrite to custom cloud backend if configured by user
+    let customBackend: string | null = null;
     let targetInput: RequestInfo | URL = input;
     try {
-      const customBackend =
+      customBackend =
         (import.meta as any).env?.VITE_BACKEND_URL ||
         window.localStorage.getItem(LS_CLOUD_BACKEND_KEY);
       if (customBackend && rawUrl.startsWith("/")) {
@@ -359,14 +372,39 @@ export function installAiStudioBridge(): void {
       // ignore env lookup errors
     }
 
-    try {
-      const response = await originalFetch(targetInput, init);
-      const contentType = (response.headers.get("content-type") || "").toLowerCase();
-      if (response.ok && contentType.includes("application/json")) {
-        return response;
+    const isMultiEnginePort =
+      window.location.port === "5173" ||
+      window.location.port === "5174" ||
+      window.location.port === "5175";
+
+    const shouldTryNetwork =
+      Boolean(customBackend) ||
+      (isMultiEnginePort && (!localBackendChecked || localBackendOnline));
+
+    if (shouldTryNetwork && nativeFetch) {
+      try {
+        const response = await nativeFetch(targetInput, init);
+        const contentType = (
+          response.headers.get("content-type") || ""
+        ).toLowerCase();
+        const isOfflineHeader = Boolean(
+          response.headers.get("x-sovereign-offline")
+        );
+        if (
+          response.ok &&
+          !isOfflineHeader &&
+          contentType.includes("application/json")
+        ) {
+          localBackendChecked = true;
+          localBackendOnline = true;
+          return response;
+        }
+        localBackendChecked = true;
+        localBackendOnline = false;
+      } catch {
+        localBackendChecked = true;
+        localBackendOnline = false;
       }
-    } catch {
-      // Network/proxy offline -> fall through to AI Studio snapshot bridge
     }
 
     const fallback = handleOfflineApiRequest(rawUrl, init);
@@ -374,17 +412,44 @@ export function installAiStudioBridge(): void {
     return jsonResponse({ ok: true });
   };
 
-  // Prevent WebSocket proxy/connection crashes when running inside Google AI Studio preview sandbox
-  const isLocalHost =
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1";
+  (globalThis as any).__sovereignFetch = sovereignFetch;
+  (window as any).__sovereignFetch = sovereignFetch;
+
+  try {
+    Object.defineProperty(window, "fetch", {
+      value: sovereignFetch,
+      configurable: true,
+      writable: true,
+    });
+  } catch {
+    // window.fetch is a non-configurable getter in host environment;
+    // Vite transform routes app fetch() calls through globalThis.__sovereignFetch.
+  }
+
+  const isMultiEngineLocal =
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1") &&
+    (window.location.port === "5173" ||
+      window.location.port === "5174" ||
+      window.location.port === "5175");
   const hasCustomWs = Boolean((import.meta as any).env?.VITE_WS_URL);
 
-  if (!isLocalHost && !hasCustomWs && typeof window.WebSocket !== "undefined") {
+  if (typeof window.WebSocket !== "undefined") {
     const NativeWebSocket = window.WebSocket;
-    const SafeWebSocket = function (this: any, url: string | URL, protocols?: string | string[]) {
+    const SafeWebSocket = function (
+      this: any,
+      url: string | URL,
+      protocols?: string | string[]
+    ) {
       const urlStr = String(url);
-      if (urlStr.includes("/ws/stream") || urlStr.includes("/engine/")) {
+      if (
+        !isMultiEngineLocal &&
+        !hasCustomWs &&
+        (urlStr.includes("/ws/stream") ||
+          urlStr.includes("/engine/") ||
+          urlStr.endsWith("/ws"))
+      ) {
+        const listeners: Record<string, Array<(ev: any) => void>> = {};
         const fakeWs: any = {
           url: urlStr,
           readyState: 1, // OPEN
@@ -400,18 +465,28 @@ export function installAiStudioBridge(): void {
           close: () => {
             fakeWs.readyState = 3;
           },
-          addEventListener: () => {},
-          removeEventListener: () => {},
+          addEventListener: (type: string, cb: (ev: any) => void) => {
+            if (!listeners[type]) listeners[type] = [];
+            listeners[type].push(cb);
+          },
+          removeEventListener: (type: string, cb: (ev: any) => void) => {
+            if (!listeners[type]) return;
+            listeners[type] = listeners[type].filter((fn) => fn !== cb);
+          },
           dispatchEvent: () => true,
         };
         setTimeout(() => {
+          const ev = new Event("open");
           if (typeof fakeWs.onopen === "function") {
-            fakeWs.onopen(new Event("open"));
+            fakeWs.onopen(ev);
           }
-        }, 60);
+          (listeners["open"] || []).forEach((fn) => fn(ev));
+        }, 40);
         return fakeWs;
       }
-      return new NativeWebSocket(url, protocols);
+      return protocols !== undefined
+        ? new NativeWebSocket(url, protocols)
+        : new NativeWebSocket(url);
     } as unknown as typeof WebSocket;
 
     Object.assign(SafeWebSocket, {
@@ -420,6 +495,20 @@ export function installAiStudioBridge(): void {
       CLOSING: 2,
       CLOSED: 3,
     });
-    window.WebSocket = SafeWebSocket;
+
+    (globalThis as any).__SovereignWebSocket = SafeWebSocket;
+    (window as any).__SovereignWebSocket = SafeWebSocket;
+
+    try {
+      Object.defineProperty(window, "WebSocket", {
+        value: SafeWebSocket,
+        configurable: true,
+        writable: true,
+      });
+    } catch {
+      // window.WebSocket is non-configurable in host environment;
+      // Vite transform routes new WebSocket() through globalThis.__SovereignWebSocket.
+    }
   }
 }
+

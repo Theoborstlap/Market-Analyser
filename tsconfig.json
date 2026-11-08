@@ -20,5 +20,6 @@
       "@crypto/*": ["unified_frontend/src/markets/crypto/*"]
     }
   },
-  "include": ["src", "unified_frontend/src"]
+  "include": ["src", "unified_frontend/src"],
+  "exclude": ["**/*.test.ts"]
 }

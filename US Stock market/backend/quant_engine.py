@@ -711,8 +711,9 @@ def build_us_equity_signal(
 
     # 6. 2D Kalman Twin Spread & RRG vs SPY
     twin_symbol = meta.get("twin", "SPY")
-    twin_closes = market_histories.get(twin_symbol, market_histories["SPY"])["closes"]
-    spy_closes = market_histories["SPY"]["closes"]
+    fallback_hist = market_histories.get("SPY") or next(iter(market_histories.values()), {"closes": closes})
+    twin_closes = market_histories.get(twin_symbol, fallback_hist)["closes"]
+    spy_closes = fallback_hist["closes"]
     kalman_rrg = compute_kalman_twin_zscore_and_rrg(closes, twin_closes, spy_closes)
 
     # George & Hwang 52w Proximity and Blitz Beta-Neutral Residual Momentum (shared_core)
