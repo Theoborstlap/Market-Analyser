@@ -9,8 +9,15 @@ Preserves 100% of Unabridged V9.0 Institutional Math:
   - Brier Calibration Score & 40-Point Equity Curve
 """
 import math
+import os
+import sys
 from typing import Dict, Any, List
 import numpy as np
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.institutional_quant import evaluate_cpcv_dsr_gatekeeper
 
 
 def _norm_cdf(x: float) -> float:
@@ -103,18 +110,16 @@ def run_causal_5y_walk_forward_backtest(
         hit_target = False
         hit_stop = False
         for d in range(len(window_highs)):
-            if window_highs[d] >= target:
-                exit_p = target
-                hit_target = True
-                break
             if window_lows[d] <= stop:
                 exit_p = stop
                 hit_stop = True
                 break
+            if window_highs[d] >= target:
+                exit_p = target
+                hit_target = True
+                break
 
         gross_ret = (exit_p - entry) / max(entry, 1e-12)
-        if not hit_target and not hit_stop and gross_ret > -0.012:
-            gross_ret = abs(gross_ret) + 0.0165
 
         net_ret = gross_ret - fee_dec
         net_returns.append(net_ret)
@@ -138,20 +143,19 @@ def run_causal_5y_walk_forward_backtest(
     n_eff = float(np.sum(w_arr))
     shrink_lambda = min(0.86, max(0.24, n_eff / (n_eff + 18.0)))
     shrunk_win_rate = shrink_lambda * raw_win_rate + (1.0 - shrink_lambda) * prior_wr
-    shrunk_win_rate = max(56.2, min(85.5, shrunk_win_rate))
+    shrunk_win_rate = float(np.clip(shrunk_win_rate, 0.0, 100.0))
 
     pos_rets = rets_arr[rets_arr > 0]
     neg_rets = np.abs(rets_arr[rets_arr <= 0])
-    gross_profit = float(np.sum(pos_rets)) if len(pos_rets) > 0 else 0.06
-    gross_loss = float(np.sum(neg_rets)) if len(neg_rets) > 0 else 0.02
-    profit_factor = max(1.45, min(3.98, gross_profit / max(gross_loss, 1e-6)))
+    gross_profit = float(np.sum(pos_rets)) if len(pos_rets) > 0 else 0.0
+    gross_loss = float(np.sum(neg_rets)) if len(neg_rets) > 0 else 1e-6
+    profit_factor = gross_profit / max(gross_loss, 1e-6)
 
     mean_ret = float(np.mean(rets_arr))
     std_ret = max(float(np.std(rets_arr)), 1e-4)
     # 24/7/365 Annualized Sharpe using sqrt(365 / horizon)
     trades_per_year = 365.0 / float(horizon)
     sharpe = (mean_ret / std_ret) * math.sqrt(trades_per_year)
-    sharpe = max(1.24, min(3.65, sharpe))
 
     # Higher moments for PSR & DSR (Bailey & Lopez de Prado)
     z_rets = (rets_arr - mean_ret) / std_ret
@@ -163,7 +167,7 @@ def run_causal_5y_walk_forward_backtest(
         max(1e-6, (1.0 - skew * sharpe + ((kurt - 1.0) / 4.0) * (sharpe ** 2)) / max(n_obs - 1, 1))
     )
     psr_z = (sharpe - 0.50) / max(sr_std, 1e-6)
-    psr_pct = max(78.0, min(99.8, _norm_cdf(psr_z) * 100.0))
+    psr_pct = float(np.clip(_norm_cdf(psr_z) * 100.0, 0.0, 100.0))
 
     # Deflated Sharpe Ratio accounting for N=26 multiple testing trials
     euler_gamma = 0.5772156649
@@ -172,7 +176,7 @@ def run_causal_5y_walk_forward_backtest(
         + euler_gamma * math.sqrt(2.0 * math.log(max(n_trials, 2)))
     ) * 0.35
     dsr_z = (sharpe - expected_max_sr) / max(sr_std, 1e-6)
-    dsr_pct = max(71.0, min(99.4, _norm_cdf(dsr_z) * 100.0))
+    dsr_pct = float(np.clip(_norm_cdf(dsr_z) * 100.0, 0.0, 100.0))
 
     # Build 40-point cumulative equity curve
     eq = 100.0
@@ -190,6 +194,12 @@ def run_causal_5y_walk_forward_backtest(
     equity_curve = [round(float(curve_raw[idx]), 2) for idx in indices]
 
     calendar_days_tested = max(1825, int(n - start_idx))
+    cpcv_res = evaluate_cpcv_dsr_gatekeeper(
+        returns=rets_arr,
+        num_trials=n_trials,
+        annualization_factor=365.0,
+        max_fwer=0.05,
+    )
 
     return {
         "lookback_years": round(calendar_days_tested / 365.0, 2),
@@ -210,4 +220,9 @@ def run_causal_5y_walk_forward_backtest(
         "max_drawdown_pct": round(max(4.1, min(21.5, max_dd)), 2),
         "brier_score": round(float(np.mean(brier_errors)), 4),
         "equity_curve": equity_curve,
+        "cpcv_combinations": cpcv_res["cpcv_combinations"],
+        "cpcv_mean_oos_sharpe": cpcv_res["cpcv_mean_oos_sharpe"],
+        "pbo_probability": cpcv_res["pbo_probability"],
+        "fwer_p_value": cpcv_res["fwer_p_value"],
+        "cpcv_gate_passed": cpcv_res["cpcv_gate_passed"],
     }

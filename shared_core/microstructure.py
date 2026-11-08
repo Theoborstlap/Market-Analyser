@@ -164,3 +164,86 @@ class BookSyncTracker:
                 healthy = False
             report[sym] = {"latency_s": round(lat, 2), "is_stale": stale}
         return {"overall_healthy": healthy, "symbol_health": report}
+
+
+# ===========================================================================
+# Adverse Limit Order Fill & VPIN Toxicity Engine
+# ===========================================================================
+def compute_vpin_toxicity(
+    buy_volume: float,
+    sell_volume: float,
+    bucket_volume: float,
+) -> float:
+    """
+    Computes Easley et al. (2012) Volume-Synchronized Probability of Toxicity (VPIN).
+    VPIN = |V_buy - V_sell| / V_total. Bounds: [0.0, 1.0].
+    """
+    total = max(float(buy_volume) + float(sell_volume), float(bucket_volume), 1e-6)
+    order_imbalance = abs(float(buy_volume) - float(sell_volume))
+    return float(np.clip(order_imbalance / total, 0.0, 1.0))
+
+
+def evaluate_limit_dip_adverse_fill(
+    *,
+    limit_dip_price: float,
+    bar_low: float,
+    bar_high: float,
+    bar_open: float,
+    atr: float,
+    queue_volume: Optional[float] = None,
+    total_bar_volume: Optional[float] = None,
+    vpin_toxicity: Optional[float] = None,
+    penetration_atr_multiplier: float = 0.25,
+) -> Dict[str, Any]:
+    """
+    Simulates institutional limit order execution under adverse selection:
+    1. Penetration Condition: Market low must penetrate limit_dip by >= 0.25 * ATR
+       (bar_low <= limit_dip_price - 0.25 * ATR). Otherwise, limit bid is not filled.
+    2. Queue Priority & VPIN Toxicity Fill Penalty:
+       If queue volume is deep relative to bar volume, or order flow toxicity (VPIN) is elevated,
+       an adverse selection penalty is deducted from fill price (adverse fill price degradation).
+    """
+    px = float(limit_dip_price)
+    low = float(bar_low)
+    high = float(bar_high)
+    atr_val = float(atr) if float(atr) > 0.0 else max(high - low, px * 0.02)
+    req_penetration = penetration_atr_multiplier * atr_val
+    penetration_threshold = px - req_penetration
+
+    # 1. Penetration Check
+    penetrated = low <= penetration_threshold
+    if not penetrated:
+        return {
+            "filled": False,
+            "fill_price": None,
+            "reason": f"INSUFFICIENT_PENETRATION: low {low:.4f} > limit {px:.4f} - 0.25*ATR ({penetration_threshold:.4f})",
+            "required_penetration": round(req_penetration, 4),
+            "actual_penetration": round(px - low, 4),
+            "vpin_toxicity": float(vpin_toxicity or 0.0),
+            "adverse_penalty_pct": 0.0,
+        }
+
+    # 2. Queue Priority & VPIN Toxicity Penalty
+    tox = float(vpin_toxicity if vpin_toxicity is not None else 0.45)
+    queue_ratio = (
+        float(queue_volume) / max(float(total_bar_volume or 1.0), float(queue_volume or 1.0), 1.0)
+        if queue_volume is not None
+        else 0.5
+    )
+    fill_prob = float(np.clip(1.0 - (0.4 * tox + 0.3 * queue_ratio), 0.10, 1.0))
+
+    # Adverse fill slippage penalty: fills occur at worse effective price when order flow is toxic
+    adverse_slip = 0.05 * atr_val * max(0.0, tox - 0.40)
+    effective_fill_price = round(min(px, float(bar_open)) + adverse_slip, 4)
+
+    return {
+        "filled": True,
+        "fill_price": effective_fill_price,
+        "fill_probability": round(fill_prob, 4),
+        "required_penetration": round(req_penetration, 4),
+        "actual_penetration": round(px - low, 4),
+        "vpin_toxicity": round(tox, 4),
+        "queue_ratio": round(queue_ratio, 4),
+        "adverse_penalty_pct": round((adverse_slip / max(px, 1e-6)) * 100.0, 4),
+        "reason": "LIMIT_DIP_PENETRATED_AND_FILLED",
+    }

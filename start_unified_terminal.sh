@@ -11,11 +11,12 @@ echo "--------------------------------------------------------------------------
 echo "  🇿🇦 JSE Trading Engine     -> http://127.0.0.1:8000"
 echo "  🇺🇸 US Wall Street Engine  -> http://127.0.0.1:8001"
 echo "  ⚡ Crypto 24/7 Engine     -> http://127.0.0.1:8002"
+echo "  🧬 Unified IPC & L2/L3 Bus-> http://127.0.0.1:8003 (/ws/stream)"
 echo "  🖥️  Unified Web Terminal  -> http://localhost:5173"
 echo "================================================================================"
 
-# Free any existing listeners on backend ports (8000-8002) & frontend ports (5173-5175)
-for port in 8000 8001 8002 5173 5174 5175; do
+# Free any existing listeners on backend ports (8000-8003) & frontend ports (5173-5175)
+for port in 8000 8001 8002 8003 5173 5174 5175; do
   lsof -ti tcp:$port | xargs kill -9 2>/dev/null || true
 done
 
@@ -58,7 +59,18 @@ PID_US_BACK=$!
 ) > "$LOG_DIR/crypto_backend.log" 2>&1 &
 PID_CRYPTO_BACK=$!
 
-# 4. Start Unified Sovereign Omni-Market Frontend (Port 5173)
+# 4. Start Unified Parent Orchestrator & Multiplexed L2/L3 WS Bus (Port 8003)
+(
+  cd "$ROOT_DIR"
+  if [ -x "./JSE Stock market/backend/venv/bin/python" ]; then
+    exec "./JSE Stock market/backend/venv/bin/python" -m shared_core.unified_bus
+  else
+    exec python3 -m shared_core.unified_bus
+  fi
+) > "$LOG_DIR/unified_bus.log" 2>&1 &
+PID_UNIFIED_BUS=$!
+
+# 5. Start Unified Sovereign Omni-Market Frontend (Port 5173)
 (
   cd "$ROOT_DIR/unified_frontend"
   tail -f /dev/null | npm run dev -- --port 5173 --strictPort
@@ -66,11 +78,11 @@ PID_CRYPTO_BACK=$!
 PID_UNIFIED_FRONT=$!
 
 cleanup() {
-  kill "$PID_JSE_BACK" "$PID_US_BACK" "$PID_CRYPTO_BACK" "$PID_UNIFIED_FRONT" 2>/dev/null || true
+  kill "$PID_JSE_BACK" "$PID_US_BACK" "$PID_CRYPTO_BACK" "$PID_UNIFIED_BUS" "$PID_UNIFIED_FRONT" 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
 
-# Wait until all 3 backend health endpoints and unified UI are reachable
+# Wait until all 3 backend health endpoints, unified bus, and unified UI are reachable
 python3 - <<'PY'
 import time, urllib.request
 
@@ -78,6 +90,7 @@ targets = [
     ("JSE Engine (:8000)", "http://127.0.0.1:8000/api/health"),
     ("US Engine (:8001)", "http://127.0.0.1:8001/api/health"),
     ("Crypto Engine (:8002)", "http://127.0.0.1:8002/api/health"),
+    ("Unified IPC Bus (:8003)", "http://127.0.0.1:8003/api/health"),
     ("Unified UI (:5173)", "http://localhost:5173/"),
 ]
 

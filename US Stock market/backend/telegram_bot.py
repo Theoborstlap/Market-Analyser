@@ -30,7 +30,9 @@ try:
 except ImportError:
     httpx = None
 
-from config import US_UNIVERSE_MAP, DEFAULT_FEE_PROFILE, DEFAULT_ROUND_TRIP_FEE_PCT
+import os
+import sys
+from config import DB_PATH, US_UNIVERSE_MAP, DEFAULT_FEE_PROFILE, DEFAULT_ROUND_TRIP_FEE_PCT
 from database import (
     fetch_alert_settings,
     save_alert_settings,
@@ -38,10 +40,21 @@ from database import (
     fetch_open_trades,
     insert_trade,
     close_trade_by_id,
+    partial_close_position,
     has_signal_alert_been_sent_today,
     record_signal_alert_sent,
 )
 from v12_omega import get_us_session_status
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.telegram_coach import (
+    build_buy_alert_inline_keyboard,
+    dispatch_active_trades_coach_alerts,
+    handle_telegram_callback_query,
+    should_dispatch_buy_alert,
+)
 
 _SENT_APLUS_CACHE: Dict[str, float] = {}
 _SENT_STAGE_CACHE: Dict[str, str] = {}
@@ -84,13 +97,20 @@ def _sync_http_get_json(url: str, params: Optional[Dict[str, Any]] = None) -> Di
         return json.loads(resp.read().decode("utf-8"))
 
 
-async def send_telegram_message(bot_token: str, chat_id: str, text: str) -> Dict[str, Any]:
+async def send_telegram_message(
+    bot_token: str,
+    chat_id: str,
+    text: str,
+    reply_markup: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     token = (bot_token or "").strip()
     cid = (chat_id or "").strip()
     if not token or not cid:
         return {"ok": False, "error": "Missing Telegram Bot Token or Chat ID."}
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": cid, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
+    payload: Dict[str, Any] = {"chat_id": cid, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
         data = await asyncio.to_thread(_sync_http_post_json, url, payload)
         if data.get("ok"):
@@ -379,6 +399,16 @@ async def poll_telegram_updates_and_push_alerts(
             if uid > last_update_id:
                 last_update_id = uid
                 update_telegram_cursor(last_update_id)
+            if upd.get("callback_query"):
+                await handle_telegram_callback_query(
+                    upd["callback_query"],
+                    market="US",
+                    bot_token=token,
+                    db_path=DB_PATH,
+                    partial_close_fn=lambda tid, pct: partial_close_position(tid, pct, None, 16.50),
+                    close_trade_fn=lambda tid: close_trade_by_id(tid, None, 16.50, "TELEGRAM_1TAP_CLOSE"),
+                )
+                continue
             msg = upd.get("message") or {}
             text = (msg.get("text") or "").strip()
             sender_chat_id = str((msg.get("chat") or {}).get("id") or chat_id)
@@ -420,13 +450,22 @@ async def poll_telegram_updates_and_push_alerts(
         ][:3]
         for sig in winners_12:
             sym = sig["symbol"]
+            buy_gate = should_dispatch_buy_alert(
+                market="US",
+                signal=sig,
+                macro_state=state.get("macro"),
+            )
+            if not buy_gate["allowed"]:
+                continue
             if not has_signal_alert_been_sent_today(sym, today_str):
+                opt_bid = float(buy_gate["optimal_limit_bid"])
                 record_signal_alert_sent(
                     ticker=sym,
                     alert_date=today_str,
                     verdict=str(sig.get("verdict", "A+_SNIPER_BUY")),
-                    recommended_plan=str(sig.get("recommended_entry_plan", "PLAN_A_MARKET")),
+                    recommended_plan="PLAN_B_LIMIT_PULLBACK",
                 )
+                markup = build_buy_alert_inline_keyboard("US", sym, opt_bid, bot_token=token)
                 await send_telegram_message(
                     token,
                     chat_id,
@@ -435,29 +474,21 @@ async def poll_telegram_updates_and_push_alerts(
                         f"🌐 <b>Website:</b> US Wall Street (http://localhost:5174) • <b>Sector:</b> {sig.get('sector', 'US')}\n"
                         f"{sig['traffic_light_verdict']}\n"
                         f"🛡️ <b>Zero-Risk Shield:</b> {sig.get('zero_risk_shield_prob_pct', 95.4):.1f}% | Empirical Win Rate: {sig.get('bayesian_reliability_pct', 94.0):.1f}%\n"
-                        f"• AI Pick: <b>{sig.get('recommended_entry_plan', 'PLAN_A_MARKET')}</b> ({sig.get('entry_plan_reason', '')})\n"
+                        f"• AI Pick: <b>PLAN_B_LIMIT_PULLBACK</b> (min Conformal90, EMA20 = <b>${opt_bid:.2f}</b> | RVOL {buy_gate['rvol']:.2f}x)\n"
                         f"• Plan A Market: ${sig['entry_price']:.2f} (Reclaim ${sig.get('reclaim_trigger_price', sig['entry_price']):.2f} | {sig['net_rr_market']:.2f}x Net R:R | EV +{sig.get('ev_plan_a_pct', 0):.2f}%)\n"
-                        f"• Plan B Limit Dip: ${sig['limit_dip_entry_price']:.2f} ({sig['net_rr_limit_dip']:.2f}x | {sig['limit_fill_prob_pct']:.0f}% Fill | EV +{sig.get('ev_plan_b_pct', 0):.2f}%)\n"
+                        f"• Plan B Limit Dip: ${opt_bid:.2f} ({sig['net_rr_limit_dip']:.2f}x | {sig['limit_fill_prob_pct']:.0f}% Fill | EV +{sig.get('ev_plan_b_pct', 0):.2f}%)\n"
                         f"• Plan C 60/40 Elastic: ${sig['blended_entry_price']:.2f} (40% MAE Reserve @ ${sig.get('mae_reserve_price', sig['limit_dip_entry_price']):.2f})\n"
                         f"• Smart Stop: ${sig.get('stop_hunt_protected_sl', sig['stop_loss']):.2f} | Ladder: TP0 ${sig.get('tp0_price', sig['target_price']):.2f} (Lock SL ${sig.get('breakeven_lock_price', sig['entry_price']):.2f}) / TP1 ${sig.get('tp1_price', sig['target_price']):.2f} / TP2 ${sig.get('tp2_price', sig['target_price']):.2f} / TP3 ${sig.get('tp3_price', sig['target_price']):.2f}"
                     ),
+                    reply_markup=markup,
                 )
 
-    # 3. Push Alert on Active Trade Stage / Stage 4.5 / Stage 7+ Transitions
-    for t in state.get("active_trades") or []:
-        tid_key = f"{t['id']}"
-        stage_sig = f"{t['current_stage']}:{t.get('special_stage_badge') or ''}"
-        prev_sig = _SENT_STAGE_CACHE.get(tid_key)
-        if prev_sig is not None and prev_sig != stage_sig:
-            await send_telegram_message(
-                token,
-                chat_id,
-                (
-                    f"🔔 <b>US TRADE COACH STAGE TRANSITION — {t['symbol']}</b>\n"
-                    f"New Stage: <b>{t['stage_label']}</b>\n"
-                    f"Net P&L: <b>{t['net_pnl_pct']:+.2f}% (${t['net_pnl_usd']:+.2f})</b>\n"
-                    f"Recommended Stop: <b>${t['recommended_stop']:.2f}</b>\n"
-                    f"Directive: <i>{t['action_directive']}</i>"
-                ),
-            )
-        _SENT_STAGE_CACHE[tid_key] = stage_sig
+    # 3. Unified Real-Time Active Trade Coach Dispatcher (TP0/TP1/TP2/TP3 Chandelier/Time-Stop + 1-Tap Inline Buttons)
+    await asyncio.to_thread(
+        dispatch_active_trades_coach_alerts,
+        state,
+        market="US",
+        bot_token=token,
+        chat_id=chat_id,
+        enabled=bool(settings.get("enabled")),
+    )

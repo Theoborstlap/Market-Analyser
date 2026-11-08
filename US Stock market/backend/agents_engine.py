@@ -33,31 +33,31 @@ def run_us_trading_agents_committee(
     prox_52w = float(quant_metrics.get("prox_52w_pct", 95.0))
     pysr_score = float(quant_metrics.get("sovereign_symbolic_score", 0.0))
 
-    q_score = min(98.0, max(38.0, 52.0 + (hurst - 0.50) * 145.0 - max(0.0, entropy - 0.72) * 80.0 + fractal_score * 6.5 + min(6.0, max(-6.0, res_mom_z * 3.0))))
+    q_score = min(98.0, max(0.0, 50.0 + (hurst - 0.50) * 145.0 - max(0.0, entropy - 0.72) * 80.0 + (fractal_score - 1) * 6.5 + res_mom_z * 6.0))
 
     gex_positive = "POSITIVE" in str(options_intel.get("gex_regime", ""))
     skew_val = float(options_intel.get("skew_25d_pct", 1.2))
-    unusual_opt = float(options_intel.get("unusual_options_vol_ratio", 1.4))
-    iv_ratio = float(options_intel.get("iv_term_ratio", 0.94))
+    unusual_opt = float(options_intel.get("unusual_options_vol_ratio", 1.0))
+    iv_ratio = float(options_intel.get("iv_term_ratio", 1.0))
     o_score = min(
         97.0,
         max(
-            40.0,
-            (72.0 if gex_positive else 54.0)
-            + min(14.0, unusual_opt * 5.2)
-            - max(0.0, skew_val - 4.0) * 3.0
-            - max(0.0, iv_ratio - 1.05) * 30.0
+            0.0,
+            (62.0 if gex_positive else 44.0)
+            + (unusual_opt - 1.0) * 12.0
+            - max(0.0, skew_val - 3.0) * 4.0
+            - max(0.0, iv_ratio - 1.0) * 40.0
         )
     )
 
-    insider_buys = int(sec_intel.get("form4_insider_buys_30d", 1))
-    sue_score = float(sec_intel.get("sue_score", 1.5))
-    inst_own = float(sec_intel.get("institutional_ownership_pct", 74.0))
-    s_score = min(96.0, max(42.0, 56.0 + insider_buys * 6.2 + sue_score * 5.8 + (inst_own - 65.0) * 0.32))
+    insider_buys = int(sec_intel.get("form4_insider_buys_30d", 0))
+    sue_score = float(sec_intel.get("sue_score", 0.0))
+    inst_own = float(sec_intel.get("institutional_ownership_pct", 65.0))
+    s_score = min(96.0, max(0.0, 50.0 + insider_buys * 6.2 + sue_score * 5.8 + (inst_own - 65.0) * 0.32))
 
-    es_chg = float(macro_intel.get("es_futures_change_pct", 0.35))
-    vix_spot = float(macro_intel.get("vix_spot", 15.8))
-    m_score = min(95.0, max(38.0, 68.0 + es_chg * 11.0 - max(0.0, vix_spot - 18.5) * 2.4))
+    es_chg = float(macro_intel.get("es_futures_change_pct", 0.0))
+    vix_spot = float(macro_intel.get("vix_spot", 18.5))
+    m_score = min(95.0, max(0.0, 55.0 + es_chg * 11.0 - (vix_spot - 18.5) * 2.4))
 
     w_q = float(agent_weights.get("quant_microstructure", {}).get("weight", 0.31))
     w_o = float(agent_weights.get("options_gex_specialist", {}).get("weight", 0.28))

@@ -3,22 +3,37 @@
 
 import asyncio
 import json
+import os
 import subprocess
+import sys
 import urllib.parse
 import urllib.request
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+
 from config import JSE_EQUITY_FRICTION_PCT, JSE_ETF_FRICTION_PCT, get_round_trip_friction_pct, is_stt_exempt_etf
 from data_fetcher import SAST_ZONE, get_jse_session_status
 from database import (
+    DB_PATH,
     fetch_all_dict,
     get_active_plan_b_alerts_for_cancel_check,
     get_connection,
     has_signal_alert_been_sent_today,
     mark_signal_alert_cancelled,
+    partial_close_or_scale_out_trade,
     record_signal_alert_sent,
     sync_portfolio_and_trades,
+)
+from shared_core.telegram_coach import (
+    build_buy_alert_inline_keyboard,
+    dispatch_active_trades_coach_alerts as shared_dispatch_active_trades_coach_alerts,
+    handle_telegram_callback_query,
+    send_telegram_with_markup_sync,
+    should_dispatch_buy_alert,
 )
 
 
@@ -118,15 +133,20 @@ def _telegram_api_get(url: str, timeout: float = 6.0) -> Dict[str, Any]:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def send_telegram_message_sync(bot_token: str, chat_id: str, text: str) -> Dict[str, Any]:
-    if not bot_token or not chat_id:
-        return {"ok": False, "error": "Missing Bot Token or Chat ID"}
-    try:
-        url = f"https://api.telegram.org/bot{bot_token.strip()}/sendMessage"
-        data = _telegram_api_post(url, {"chat_id": str(chat_id).strip(), "text": text}, timeout=5.0)
-        return {"ok": bool(data.get("ok", True)), "result": data}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+def send_telegram_message_sync(
+    bot_token: str,
+    chat_id: str,
+    text: str,
+    reply_markup: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return send_telegram_with_markup_sync(
+        bot_token=bot_token,
+        chat_id=chat_id,
+        text=text,
+        reply_markup=reply_markup,
+        parse_mode=None,
+        timeout=5.0,
+    )
 
 
 def auto_detect_telegram_chat_id(bot_token: str) -> Dict[str, Any]:
@@ -263,17 +283,29 @@ def dispatch_prime_hours_12_12_telegram_alerts(
 
     for idx, winner in enumerate(top3_winners, 1):
         sym = winner["ticker"]
+        buy_gate = should_dispatch_buy_alert(
+            market="JSE",
+            signal=winner,
+            macro_state=dashboard_state.get("macro"),
+        )
+        if not buy_gate["allowed"]:
+            continue
         if not has_signal_alert_been_sent_today(today_str, sym, "A+_SNIPER_BUY_12_12"):
-            msg = format_12_12_sniper_alert_message(winner, rank_idx=int(winner.get("tournament_rank") or idx))
-            res = send_telegram_message_sync(token, chat_id, msg)
+            opt_bid = float(buy_gate["optimal_limit_bid"])
+            msg = (
+                format_12_12_sniper_alert_message(winner, rank_idx=int(winner.get("tournament_rank") or idx))
+                + f"\n🎯 Optimal Plan B Limit Pullback (min Conformal90, EMA20): R{opt_bid:.2f} (RVOL {buy_gate['rvol']:.2f}x)"
+            )
+            markup = build_buy_alert_inline_keyboard("JSE", sym, opt_bid, bot_token=token)
+            res = send_telegram_message_sync(token, chat_id, msg, reply_markup=markup)
             if res.get("ok"):
                 record_signal_alert_sent(
                     alert_date=today_str,
                     ticker=sym,
                     alert_type="A+_SNIPER_BUY_12_12",
-                    recommended_entry_plan=str(winner.get("recommended_entry_plan", "PLAN_A_MARKET")),
+                    recommended_entry_plan="PLAN_B_LIMIT_PULLBACK",
                     entry_price_zar=float(winner.get("entry_price", 0.0)),
-                    limit_dip_price_zar=float(winner.get("limit_dip_entry_price", 0.0)),
+                    limit_dip_price_zar=opt_bid,
                     bocpd_at_alert=float(winner.get("bocpd_changepoint_prob_pct", 14.0)),
                 )
                 sent_tickers.append(sym)
@@ -534,7 +566,7 @@ _SENT_JSE_STAGE_CACHE: Dict[str, str] = {}
 
 
 def dispatch_active_trades_coach_alerts(dashboard_state: Dict[str, Any]) -> None:
-    """Dispatches Telegram alerts whenever an open trade hits TP stages, trailing stop adjustments, or harvest directives."""
+    """Delegates to unified shared_core.telegram_coach real-time multi-stage TP/Chandelier/Time-Stop dispatcher."""
     settings = get_telegram_settings()
     token = settings.get("telegram_bot_token", "").strip()
     chat_id = settings.get("telegram_chat_id", "").strip()
@@ -542,31 +574,13 @@ def dispatch_active_trades_coach_alerts(dashboard_state: Dict[str, Any]) -> None
         return
     if not settings.get("alert_on_coach_stages", True):
         return
-
-    active_trades = dashboard_state.get("activeTrades") or dashboard_state.get("active_trades") or []
-    for t in active_trades:
-        tid_key = str(t.get("id"))
-        stage_sig = f"{t.get('coachStageLabel') or t.get('stage_label')}:{t.get('coachUrgency') or t.get('urgency') or ''}:{t.get('tp0_hit', 0)}:{t.get('tp1_hit', 0)}:{t.get('tp2_hit', 0)}"
-        prev_sig = _SENT_JSE_STAGE_CACHE.get(tid_key)
-        if prev_sig is not None and prev_sig != stage_sig:
-            sym = t.get("ticker") or t.get("symbol")
-            pnl_zar = float(t.get("unrealizedPnlZar") or t.get("realized_partial_pnl_zar") or 0.0)
-            pnl_pct = float(t.get("unrealizedPnlPct") or t.get("net_pnl_pct") or 0.0)
-            rec_stop = float(t.get("chandelierTrailingStopZar") or t.get("recommended_stop") or t.get("stopLossZar") or 0.0)
-            badge = t.get("coachActionBadge") or t.get("action_directive") or t.get("coachInstruction") or "HOLD"
-            stage_lbl = t.get("coachStageLabel") or t.get("stage_label") or "Stage Update"
-            
-            msg = (
-                f"🔔 <b>JSE TRADE COACH SELL / HARVEST DIRECTIVE — {sym}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"• Directive: <b>{badge}</b>\n"
-                f"• Stage: <b>{stage_lbl}</b>\n"
-                f"• Net P&L: <b>{pnl_pct:+.2f}% (R{pnl_zar:+,.2f})</b>\n"
-                f"• Ratchet Trailing Stop: <b>R{rec_stop:.2f}</b>\n"
-                f"• Progress to Target: <b>{float(t.get('progressToTargetPct') or t.get('progress_toward_target_pct') or 0.0):.1f}%</b>"
-            )
-            send_telegram_message_sync(token, chat_id, msg)
-        _SENT_JSE_STAGE_CACHE[tid_key] = stage_sig
+    shared_dispatch_active_trades_coach_alerts(
+        dashboard_state,
+        market="JSE",
+        bot_token=token,
+        chat_id=chat_id,
+        enabled=True,
+    )
 
 
 async def telegram_background_worker(
@@ -599,6 +613,17 @@ async def telegram_background_worker(
                         uid = int(upd.get("update_id", 0))
                         if uid > max_uid:
                             max_uid = uid
+                        if upd.get("callback_query"):
+                            await handle_telegram_callback_query(
+                                upd["callback_query"],
+                                market="JSE",
+                                bot_token=token,
+                                db_path=DB_PATH,
+                                open_trade_fn=open_trade_fn,
+                                partial_close_fn=lambda tid, pct: partial_close_or_scale_out_trade(tid, pct, None),
+                                close_trade_fn=lambda tid: close_trade_fn(tid, None, "TELEGRAM_1TAP_CLOSE"),
+                            )
+                            continue
                         msg = upd.get("message") or {}
                         txt = str(msg.get("text") or "").strip()
                         from_chat_id = str((msg.get("chat") or {}).get("id") or chat_id)

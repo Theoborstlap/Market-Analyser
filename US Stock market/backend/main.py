@@ -66,7 +66,19 @@ from telegram_bot import (
     format_wall_street_1515_briefing,
     poll_telegram_updates_and_push_alerts,
 )
-from app.services.alpaca_service import submit_alpaca_paper_order
+from app.services.alpaca_service import submit_alpaca_paper_order, submit_alpaca_bracket_order
+from shared_core.oms_engine import (
+    validate_pre_trade_risk,
+    generate_client_order_id,
+    run_oms_reconciliation_and_watchdog_loop,
+    get_cached_live_quote,
+    is_live_trading_enabled,
+)
+from shared_core.telegram_coach import (
+    dispatch_active_trades_coach_alerts,
+    handle_telegram_callback_query,
+)
+from config import DB_PATH
 
 _STATE_CACHE: Dict[str, Any] = {}
 
@@ -363,8 +375,25 @@ async def lifespan(app: FastAPI):
     init_db()
     build_full_terminal_state(DEFAULT_FEE_PROFILE, 10000.0)
     bg_task = asyncio.create_task(_background_loop())
+    oms_task = asyncio.create_task(
+        run_oms_reconciliation_and_watchdog_loop(
+            market="US",
+            db_path=DB_PATH,
+            active_coach_fn=lambda: asyncio.to_thread(
+                dispatch_active_trades_coach_alerts,
+                _STATE_CACHE.get("LATEST") or build_full_terminal_state(),
+                market="US",
+            ),
+            telegram_alert_fn=lambda msg: send_telegram_message(
+                bot_token=fetch_alert_settings().get("telegram_bot_token", ""),
+                chat_id=fetch_alert_settings().get("telegram_chat_id", ""),
+                text=msg,
+            ),
+        )
+    )
     yield
     bg_task.cancel()
+    oms_task.cancel()
 
 
 app = FastAPI(
@@ -521,6 +550,47 @@ def log_new_trade(payload: TradeLogInput) -> Dict[str, Any]:
     stop_val = float(payload.stop_loss) if payload.stop_loss else (float(sig["stop_loss"]) if sig else round(payload.entry_price - 1.35 * atr_val, 2))
     target_val = float(payload.target_price) if payload.target_price else (float(sig["target_price"]) if sig else round(payload.entry_price + 3.0 * atr_val, 2))
 
+    live_q = get_cached_live_quote("US", clean)
+    live_mid = float(live_q.get("regularMarketPrice") or (sig["price"] if sig else payload.entry_price))
+    spread_pct = float(live_q.get("spread_pct") or (sig.get("spread_pct", 0.05) if sig else 0.05))
+    data_ts = float(live_q.get("timestamp") or _STATE_CACHE.get("_TS") or time.time())
+    equity_usd = float(state.get("account_balance_usd") or 10000.0)
+    dd_pct = abs(min(0.0, float(state.get("compounding_roadmap", {}).get("current_drawdown_pct", 0.0))))
+
+    risk_gate = validate_pre_trade_risk(
+        market="US",
+        symbol=clean,
+        side="BUY",
+        qty=payload.shares,
+        requested_price=payload.entry_price,
+        stop_loss_price=stop_val,
+        total_equity=max(equity_usd, payload.entry_price * payload.shares * 10.0 if payload.mode.upper() != "REAL" else equity_usd),
+        daily_drawdown_pct=dd_pct,
+        live_mid_price=live_mid,
+        bid_ask_spread_pct=spread_pct,
+        estimated_slippage_pct=spread_pct * 0.5,
+        data_timestamp_epoch=data_ts,
+        db_path=DB_PATH,
+    )
+    if not risk_gate["allowed"]:
+        raise HTTPException(status_code=409, detail={"decision": "BLOCK", "reasons": risk_gate["reasons"]})
+
+    oms_exec = None
+    if payload.mode.upper() == "REAL" or is_live_trading_enabled():
+        try:
+            oms_exec = submit_alpaca_bracket_order(
+                symbol=clean,
+                qty=payload.shares,
+                side="buy",
+                limit_price=payload.entry_price,
+                stop_loss_price=stop_val,
+                take_profit_price=target_val,
+                client_order_id=risk_gate["client_order_id"],
+                db_path=DB_PATH,
+            )
+        except Exception:
+            oms_exec = {"status": "SIMULATED_DRY_RUN", "client_order_id": risk_gate["client_order_id"]}
+
     tid = insert_trade(
         symbol=clean,
         name=meta["name"],
@@ -535,7 +605,15 @@ def log_new_trade(payload: TradeLogInput) -> Dict[str, Any]:
         atr_at_entry=atr_val,
         plan_selected=payload.plan_selected,
     )
-    return {"ok": True, "trade_id": tid, "state": build_full_terminal_state(payload.broker_profile)}
+    return {
+        "ok": True,
+        "trade_id": tid,
+        "client_order_id": risk_gate["client_order_id"],
+        "oms_execution": oms_exec,
+        "almgren_chriss_plan": risk_gate.get("almgren_chriss_plan"),
+        "cross_asset_cvar": risk_gate.get("cross_asset_cvar"),
+        "state": build_full_terminal_state(payload.broker_profile),
+    }
 
 
 @app.post("/api/trades/{trade_id}/close")
@@ -768,18 +846,71 @@ async def trigger_preopen_briefing_now() -> Dict[str, Any]:
     )
 
 
+@app.post("/api/telegram/webhook")
+async def telegram_webhook_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
+    settings = fetch_alert_settings()
+    token = (settings.get("telegram_bot_token") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    cb = payload.get("callback_query") or payload
+    return await handle_telegram_callback_query(
+        cb,
+        market="US",
+        bot_token=token,
+        db_path=DB_PATH,
+        open_trade_fn=lambda p: execute_alpaca_paper(
+            AlpacaOrderInput(
+                symbol=str(p["symbol"]),
+                qty=float(p.get("shares") or 1.0),
+                side="buy",
+                order_type="limit" if p.get("entry_price") else "market",
+                limit_price=float(p["entry_price"]) if p.get("entry_price") else None,
+            )
+        ),
+        partial_close_fn=lambda tid, pct: partial_close_open_position(tid, PartialCloseInput(close_pct=pct)),
+        close_trade_fn=lambda tid: close_open_trade(tid, TradeCloseInput(close_reason="TELEGRAM_1TAP_CLOSE")),
+    )
+
+
 @app.post("/api/alpaca/paper-order")
 async def execute_alpaca_paper(payload: AlpacaOrderInput) -> Dict[str, Any]:
+    clean = payload.symbol.upper().strip()
+    state = _STATE_CACHE.get("LATEST") or build_full_terminal_state()
+    sig = next((s for s in state.get("signals", []) if s["symbol"] == clean), None)
+    live_q = get_cached_live_quote("US", clean)
+    live_mid = float(live_q.get("regularMarketPrice") or (sig["price"] if sig else (payload.limit_price or 100.0)))
+    req_price = float(payload.limit_price or live_mid)
+    spread_pct = float(live_q.get("spread_pct") or 0.05)
+    data_ts = float(live_q.get("timestamp") or _STATE_CACHE.get("_TS") or time.time())
+    equity_usd = float(state.get("account_balance_usd") or 100000.0)
+
+    risk_gate = validate_pre_trade_risk(
+        market="US",
+        symbol=clean,
+        side=payload.side,
+        qty=payload.qty,
+        requested_price=req_price,
+        stop_loss_price=payload.stop_loss,
+        total_equity=max(equity_usd, req_price * payload.qty * 10.0),
+        live_mid_price=live_mid,
+        bid_ask_spread_pct=spread_pct,
+        estimated_slippage_pct=spread_pct * 0.5,
+        data_timestamp_epoch=data_ts,
+        db_path=DB_PATH,
+    )
+    if not risk_gate["allowed"]:
+        raise HTTPException(status_code=409, detail={"decision": "BLOCK", "reasons": risk_gate["reasons"]})
+
     return await submit_alpaca_paper_order(
-        symbol=payload.symbol.upper().strip(),
+        symbol=clean,
         qty=payload.qty,
         side=payload.side,
         order_type=payload.order_type,
-        limit_price=payload.limit_price,
+        limit_price=req_price,
         stop_loss=payload.stop_loss,
         take_profit=payload.take_profit,
         api_key=payload.alpaca_api_key,
         secret_key=payload.alpaca_secret_key,
+        client_order_id=risk_gate["client_order_id"],
+        db_path=DB_PATH,
     )
 
 

@@ -1,10 +1,11 @@
+"use client";
+
 import React from "react";
 import {
   Clock,
   ShieldAlert,
   TrendingUp,
   Activity,
-  DollarSign,
   PlusCircle,
   Globe,
   Sparkles,
@@ -13,6 +14,7 @@ import {
   Send,
   ListPlus,
   Zap,
+  Bot,
 } from "lucide-react";
 import {
   MacroIntel,
@@ -37,6 +39,7 @@ interface Props {
   onOpenCompoundingModal: () => void;
   onOpenWatchlistModal: () => void;
   onOpenTelegramModal: () => void;
+  onOpenAutonomousBotModal?: () => void;
   antiTiltTriggered?: boolean;
 }
 
@@ -44,7 +47,6 @@ export const TopCryptoSingularityBar: React.FC<Props> = ({
   macro,
   usdzar,
   accountBalanceZar,
-  onChangeAccountBalanceZar,
   simpleSniperView,
   onToggleViewMode,
   feeProfile,
@@ -56,245 +58,201 @@ export const TopCryptoSingularityBar: React.FC<Props> = ({
   onOpenCompoundingModal,
   onOpenWatchlistModal,
   onOpenTelegramModal,
+  onOpenAutonomousBotModal,
   antiTiltTriggered,
 }) => {
   const { session } = macro;
   const fxRate = usdzar?.usdzar_rate || 18.22;
-  const accountUsdt = accountBalanceZar / Math.max(fxRate, 0.01);
 
   return (
-    <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur sticky top-0 z-30">
-      {/* Row 1: 24/7/365 Phase Banner, Dual Clocks, Editable Account Scaler & View Toggle */}
-      <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            ⚡ CRYPTO 24/7/365 V10.1 SOVEREIGN (1x SPOT)
+    <header className="border-b border-white/10 bg-[#060A14] sticky top-0 z-30">
+      {/* Consolidated Single-Row Macro Ticker & Secondary Command Bar */}
+      <div className="px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2.5">
+        {/* Left: Deduplicated Horizontal Macro Ticker Strip */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+          {/* Market Session Status */}
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/50 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            SPOT OPEN
           </span>
-          <span className="text-xs font-semibold text-slate-200">
-            {session.banner_label}
-          </span>
-          <span className="text-xs text-amber-300/90 hidden xl:inline">
-            • {session.sniper_window_note}
-          </span>
-        </div>
 
-        {/* Editable R 10,000 (~$540 USDT) Account Scaler + View Mode Toggle */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center gap-2 bg-slate-950/90 border border-emerald-500/40 rounded-lg px-2.5 py-1">
-            <span className="text-[11px] font-bold text-slate-300">
-              Account Balance: R
+          {/* USD/ZAR + Valuation Metric */}
+          <div className="px-2 py-0.5 rounded bg-slate-900 border border-white/10 flex items-center gap-1.5 text-[11px]">
+            <span className="text-slate-400">USD/ZAR:</span>
+            <span className="font-bold text-white tabular-nums">
+              R {fxRate.toFixed(2)}
             </span>
-            <input
-              type="number"
-              min={500}
-              step={500}
-              value={accountBalanceZar}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                onChangeAccountBalanceZar(Number.isFinite(v) && v > 0 ? v : 10000);
-              }}
-              className="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs font-mono font-bold text-emerald-300 focus:outline-none focus:border-emerald-400"
-            />
-            <span className="text-[11px] font-mono text-cyan-300 font-semibold">
-              ZAR (~${accountUsdt.toFixed(0)} USDT)
+            <span className="text-slate-500 text-[10px]">
+              (Z={usdzar?.usdzar_zscore >= 0 ? `+${usdzar?.usdzar_zscore}` : usdzar?.usdzar_zscore} | τ={usdzar?.usdzar_ou_halflife}d)
             </span>
           </div>
 
-          {/* Simple Sniper View vs Pro Quant View Toggle */}
-          <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-700">
-            <button
-              onClick={() => onToggleViewMode(true)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition ${
-                simpleSniperView
-                  ? "bg-emerald-600 text-white shadow"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              ✨ Simple Sniper View
-            </button>
-            <button
-              onClick={() => onToggleViewMode(false)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition ${
-                !simpleSniperView
-                  ? "bg-indigo-600 text-white shadow"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Microscope className="w-3.5 h-3.5" />
-              🔬 Pro Quant View
-            </button>
-          </div>
-
-          <div className="hidden md:flex items-center gap-1.5 text-xs font-mono bg-slate-800/90 px-2.5 py-1 rounded border border-slate-700">
-            <Clock className="w-3.5 h-3.5 text-sky-400" />
-            <span className="text-sky-300 font-semibold">{session.sast_clock}</span>
-            <span className="text-slate-500">|</span>
-            <span className="text-indigo-300">{session.utc_clock}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Row 2: USD/ZAR + VALR/Luno ZAR Arbitrage Shield + Crypto Macro Telemetry + Action Bar */}
-      <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {/* Live USD/ZAR Ornstein-Uhlenbeck Regime + VALR/Luno ZAR Arbitrage Shield */}
-          <div className="px-2.5 py-1.5 rounded bg-slate-800/90 border border-cyan-500/30 flex items-center gap-2 flex-wrap">
-            <span className="text-slate-400 font-semibold">USD/ZAR:</span>
-            <span className="font-mono font-bold text-cyan-300">
-              R{fxRate.toFixed(2)}
-            </span>
-            <span className="text-[11px] font-mono text-slate-400">
-              (Z={usdzar?.usdzar_zscore >= 0 ? `+${usdzar?.usdzar_zscore}` : usdzar?.usdzar_zscore} | OU τ={usdzar?.usdzar_ou_halflife}d)
-            </span>
-            <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-mono font-bold text-[11px]">
-              🇿🇦 VALR/Luno Arb: +{usdzar?.sa_arb_premium_pct ?? macro.sa_arb_premium_pct}%
-            </span>
-            <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-200 font-bold text-[11px]">
-              {usdzar?.usdzar_regime_badge || "🟢 USD/ZAR STABLE"}
+          {/* Deduplicated VALR/Luno Arb Strip (Rendered ONCE) */}
+          <div className="px-2 py-0.5 rounded bg-slate-900 border border-white/10 flex items-center gap-1 text-[11px]">
+            <span className="text-slate-400">VALR/Luno Arb:</span>
+            <span className="font-bold text-emerald-400 tabular-nums">
+              +{usdzar?.sa_arb_premium_pct ?? macro.sa_arb_premium_pct}%
             </span>
           </div>
 
-          <div className="px-2.5 py-1.5 rounded bg-slate-800/70 border border-slate-700/80 flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+          {/* Crypto Major Tickers (BTC, ETH, SOL) */}
+          <div className="px-2 py-0.5 rounded bg-slate-900 border border-white/10 flex items-center gap-1 text-[11px]">
             <span className="text-slate-400">BTC:</span>
-            <span className="font-mono font-bold text-white">
+            <span className="font-bold text-white tabular-nums">
               ${macro.btc_price_usd.toLocaleString()}
             </span>
-            <span
-              className={`font-mono font-semibold ${
-                macro.btc_change_24h_pct >= 0 ? "text-emerald-400" : "text-rose-400"
-              }`}
-            >
-              {macro.btc_change_24h_pct >= 0 ? "+" : ""}
-              {macro.btc_change_24h_pct}%
+            <span className={macro.btc_change_24h_pct >= 0 ? "text-emerald-400" : "text-rose-400"}>
+              {macro.btc_change_24h_pct >= 0 ? "+" : ""}{macro.btc_change_24h_pct}%
             </span>
           </div>
 
-          <div className="px-2.5 py-1.5 rounded bg-slate-800/70 border border-slate-700/80 flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="px-2 py-0.5 rounded bg-slate-900 border border-white/10 flex items-center gap-1 text-[11px] hidden md:flex">
             <span className="text-slate-400">ETH:</span>
-            <span className="font-mono font-bold text-white">
+            <span className="font-bold text-white tabular-nums">
               ${macro.eth_price_usd.toLocaleString()}
             </span>
-            <span
-              className={`font-mono font-semibold ${
-                macro.eth_change_24h_pct >= 0 ? "text-emerald-400" : "text-rose-400"
-              }`}
-            >
-              {macro.eth_change_24h_pct >= 0 ? "+" : ""}
-              {macro.eth_change_24h_pct}%
+            <span className={macro.eth_change_24h_pct >= 0 ? "text-emerald-400" : "text-rose-400"}>
+              {macro.eth_change_24h_pct >= 0 ? "+" : ""}{macro.eth_change_24h_pct}%
             </span>
           </div>
 
-          <div className="px-2.5 py-1.5 rounded bg-slate-800/70 border border-slate-700/80 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-cyan-400" />
+          <div className="px-2 py-0.5 rounded bg-slate-900 border border-white/10 flex items-center gap-1 text-[11px] hidden lg:flex">
             <span className="text-slate-400">SOL:</span>
-            <span className="font-mono font-bold text-white">
+            <span className="font-bold text-white tabular-nums">
               ${macro.sol_price_usd}
             </span>
-            <span
-              className={`font-mono font-semibold ${
-                macro.sol_change_24h_pct >= 0 ? "text-emerald-400" : "text-rose-400"
-              }`}
-            >
-              {macro.sol_change_24h_pct >= 0 ? "+" : ""}
-              {macro.sol_change_24h_pct}%
+            <span className={macro.sol_change_24h_pct >= 0 ? "text-emerald-400" : "text-rose-400"}>
+              {macro.sol_change_24h_pct >= 0 ? "+" : ""}{macro.sol_change_24h_pct}%
             </span>
           </div>
 
-          <div className="px-2.5 py-1.5 rounded bg-slate-800/70 border border-slate-700/80 flex items-center gap-1.5">
+          {/* Deduplicated DVOL & Funding Strip (Rendered ONCE) */}
+          <div className="px-2 py-0.5 rounded bg-slate-900 border border-white/10 flex items-center gap-1 text-[11px] hidden sm:flex">
             <span className="text-slate-400">DVOL:</span>
-            <span className="font-mono font-bold text-amber-300">{macro.deribit_btc_dvol}%</span>
-            <span className="text-[11px] text-emerald-300 font-mono">
+            <span className="font-bold text-slate-200 tabular-nums">{macro.deribit_btc_dvol}%</span>
+            <span className="text-[10px] text-slate-400">
               (8h Fund: {macro.funding_countdown_str})
             </span>
           </div>
 
-          <div className="px-2.5 py-1.5 rounded bg-emerald-950/50 border border-emerald-700/50 flex items-center gap-1.5 text-emerald-300">
-            <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="font-semibold">{macro.macro_shield_status}</span>
+          {/* Macro Shield Status */}
+          <div className="px-2 py-0.5 rounded bg-slate-900 border border-white/10 flex items-center gap-1 text-slate-300 text-[11px]">
+            <ShieldAlert className="w-3 h-3 text-emerald-400" />
+            <span>{macro.macro_shield_status}</span>
           </div>
 
           {antiTiltTriggered && (
-            <div className="px-2.5 py-1.5 rounded bg-rose-950/80 border border-rose-500/60 text-rose-200 font-bold text-[11px]">
-              🛑 ANTI-TILT CIRCUIT BREAKER ACTIVE (0.5x Kelly)
+            <div className="px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/40 text-rose-300 font-bold text-[10px]">
+              ANTI-TILT (0.5x Kelly)
             </div>
           )}
         </div>
 
-        {/* Right Controls: Exchange Friction Profile + V10.1 Action Modals */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1 rounded border border-slate-700 text-xs">
-            <span className="text-slate-400">Exchange Fee:</span>
+        {/* Right: View Modes & Modals Action Strip */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {/* Simple Sniper vs Pro Quant View Switcher */}
+          <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-white/10">
+            <button
+              onClick={() => onToggleViewMode(true)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-bold transition ${
+                simpleSniperView
+                  ? "bg-slate-800 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Sparkles className="w-3 h-3 text-emerald-400" />
+              Simple
+            </button>
+            <button
+              onClick={() => onToggleViewMode(false)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-bold transition ${
+                !simpleSniperView
+                  ? "bg-slate-800 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Microscope className="w-3 h-3 text-indigo-400" />
+              Pro Quant
+            </button>
+          </div>
+
+          {/* Dual Timezone Clocks */}
+          <div className="hidden xl:flex items-center gap-1 text-[11px] font-mono bg-slate-900 px-2 py-1 rounded border border-white/10 text-slate-400">
+            <Clock className="w-3 h-3 text-slate-400" />
+            <span className="text-slate-300">{session.sast_clock}</span>
+            <span>|</span>
+            <span className="text-slate-300">{session.utc_clock}</span>
+          </div>
+
+          {/* Fee Profile Selector */}
+          <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded border border-white/10 text-xs font-mono">
+            <span className="text-slate-400 hidden sm:inline">Fee:</span>
             <select
               value={feeProfile.id}
               onChange={(e) => onSelectFeeProfile(e.target.value)}
-              className="bg-slate-900 text-amber-300 font-semibold px-2 py-0.5 rounded border border-slate-700 focus:outline-none"
+              className="bg-transparent text-slate-200 font-semibold focus:outline-none text-[11px]"
             >
               {availableProfiles.map((p) => (
-                <option key={p.id} value={p.id}>
+                <option key={p.id} value={p.id} className="bg-slate-900 text-white">
                   {p.label}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Upgrade 6: Global Top 3 (JSE + US + Crypto) */}
+          {/* Quick Action Modals */}
           <button
             onClick={onOpenCrossMarketModal}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold shadow transition"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 text-xs font-bold transition"
           >
-            <Globe className="w-3.5 h-3.5" />
-            🌐 Global Top 3 (JSE + US + Crypto)
+            <Globe className="w-3 h-3 text-cyan-400" />
+            <span className="hidden sm:inline">Global Top 3</span>
           </button>
 
-          {/* Upgrade 9: R10k -> R100k Compounding Tracker */}
           <button
             onClick={onOpenCompoundingModal}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-bold transition"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 text-xs font-bold transition"
           >
-            <LineChart className="w-3.5 h-3.5 text-amber-400" />
-            📈 R10k → R100k Tracker
+            <LineChart className="w-3 h-3 text-amber-400" />
+            <span className="hidden md:inline">R10k Tracker</span>
           </button>
 
-          {/* Upgrade 10: + Add Crypto Coin Watchlist */}
           <button
             onClick={onOpenWatchlistModal}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 text-xs font-bold transition"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 text-xs font-bold transition"
           >
-            <ListPlus className="w-3.5 h-3.5" />
-            + Add Coin
+            <ListPlus className="w-3 h-3 text-sky-400" />
+            <span>+ Coin</span>
           </button>
 
-          {/* Upgrade 11: Telegram Sniper Bot */}
+          <button
+            onClick={onOpenAutonomousBotModal}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-sky-500/40 text-sky-300 text-xs font-bold transition shadow-sm"
+            title="Open Autonomous Self-Learning Trading Bot"
+          >
+            <Bot className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+            <span className="hidden sm:inline">Auto Bot</span>
+          </button>
+
           <button
             onClick={onOpenTelegramModal}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-500/40 text-xs font-bold transition"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 text-xs font-bold transition"
           >
-            <Send className="w-3.5 h-3.5 text-sky-400" />
-            📲 Telegram Bot
+            <Send className="w-3 h-3 text-sky-400" />
+            <span className="hidden lg:inline">Alerts</span>
           </button>
-
-          <div className="hidden 2xl:flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1.5 rounded border border-slate-700 text-xs">
-            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-slate-400">Paper Equity:</span>
-            <span className="font-mono font-bold text-emerald-300">
-              ${paperWallet.total_equity_usd.toLocaleString()} USDT
-            </span>
-          </div>
 
           <button
             onClick={onOpenTradeModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition"
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-200 hover:bg-white text-slate-950 text-xs font-extrabold transition shadow-sm"
           >
-            <PlusCircle className="w-3.5 h-3.5" />
-            + Log Real / Custom Trade
+            <PlusCircle className="w-3 h-3" />
+            <span>Log Trade</span>
           </button>
         </div>
       </div>
     </header>
   );
 };
+
 export default TopCryptoSingularityBar;

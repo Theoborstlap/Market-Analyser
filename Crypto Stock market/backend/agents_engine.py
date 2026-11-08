@@ -21,10 +21,8 @@ def evaluate_trading_agents_conviction(tech: float, deriv: float, onchain: float
     Preserved V9.0 helper function for direct 4-specialist conviction and Red-Team kill probability.
     """
     base = 0.27 * tech + 0.26 * deriv + 0.24 * onchain + 0.23 * macro
-    if mtf_score == 3:
-        base += 6.0
-    conviction = min(96.5, max(45.0, base))
-    kill_prob = max(0.12, min(0.48, (100.0 - conviction) / 115.0))
+    conviction = min(96.5, max(0.0, base))
+    kill_prob = max(0.05, min(0.95, (100.0 - conviction) / 100.0))
     return {
         "final_conviction_score": round(conviction, 1),
         "red_team_kill_prob": round(kill_prob, 2),
@@ -40,53 +38,52 @@ def run_crypto_trading_agents_committee(
     agent_weights: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
     # 1. Compute 4 Specialist Crypto Analyst Scores (0-100)
-    hurst = float(quant_metrics.get("hurst", 0.58))
-    entropy = float(quant_metrics.get("shannon_entropy", 0.66))
+    hurst = float(quant_metrics.get("hurst", 0.50))
+    entropy = float(quant_metrics.get("shannon_entropy", 0.72))
     vpin = float(quant_metrics.get("vpin", 0.42))
-    fractal_score = int(quant_metrics.get("fractal_aligned_count", 3))
+    fractal_score = int(quant_metrics.get("fractal_aligned_count", 1))
     res_mom_z = float(quant_metrics.get("residual_momentum_z", 0.0))
-    prox_52w = float(quant_metrics.get("prox_52w_pct", 95.0))
+    prox_52w = float(quant_metrics.get("prox_52w_pct", 85.0))
     pysr_score = float(quant_metrics.get("sovereign_symbolic_score", 0.0))
 
     q_score = min(
         98.0,
         max(
-            42.0,
-            54.0 + (hurst - 0.50) * 145.0 - max(0.0, entropy - 0.72) * 80.0 + fractal_score * 6.5 + min(6.0, max(-6.0, res_mom_z * 3.0))
+            0.0,
+            50.0 + (hurst - 0.50) * 145.0 - max(0.0, entropy - 0.72) * 80.0 + (fractal_score - 1) * 6.5 + res_mom_z * 6.0
         )
     )
 
     funding_apr = float(crypto_intel.get("funding_rate_apr_pct", 10.5))
-    cb_prem = float(crypto_intel.get("coinbase_premium_pct", 0.05))
-    dvol = float(crypto_intel.get("dvol_index", 51.8))
-    # Healthy or negative funding boosts derivatives score; overheated funding > 25% APR penalizes
-    funding_bonus = 10.0 if funding_apr < 0 else (6.0 if funding_apr <= 18.0 else -16.0)
+    cb_prem = float(crypto_intel.get("coinbase_premium_pct", 0.0))
+    dvol = float(crypto_intel.get("dvol_index", 55.0))
+    funding_bonus = 8.0 if funding_apr < 0 else (3.0 if funding_apr <= 18.0 else -16.0)
     d_score = min(
         97.0,
         max(
-            38.0,
-            72.0 + funding_bonus + min(10.0, cb_prem * 85.0) - max(0.0, dvol - 68.0) * 0.4
+            0.0,
+            55.0 + funding_bonus + cb_prem * 85.0 - max(0.0, dvol - 60.0) * 0.6
         )
     )
 
-    dex_buy = float(crypto_intel.get("dex_buy_ratio_pct", 56.5))
-    tvl_chg = float(crypto_intel.get("tvl_change_7d_pct", 4.2))
-    pf_ratio = float(crypto_intel.get("pf_ratio", 18.0))
+    dex_buy = float(crypto_intel.get("dex_buy_ratio_pct", 50.0))
+    tvl_chg = float(crypto_intel.get("tvl_change_7d_pct", 0.0))
+    pf_ratio = float(crypto_intel.get("pf_ratio", 25.0))
     o_score = min(
         96.0,
         max(
-            44.0,
-            60.0 + (dex_buy - 50.0) * 1.65 + min(12.0, max(-6.0, tvl_chg * 1.1)) + (6.0 if pf_ratio <= 30.0 else 2.0)
+            0.0,
+            50.0 + (dex_buy - 50.0) * 1.65 + tvl_chg * 1.1 + (4.0 if pf_ratio <= 30.0 else -4.0)
         )
     )
 
-    sa_arb = float(macro_intel.get("sa_arb_premium_pct", 1.18))
+    sa_arb = float(macro_intel.get("sa_arb_premium_pct", 0.0))
     mayer = float(macro_intel.get("mayer_multiple", 1.24))
     m_score = min(
         95.0,
         max(
-            45.0,
-            74.0 + min(8.0, sa_arb * 3.5) + (6.0 if 0.85 <= mayer <= 2.1 else -4.0)
+            0.0,
+            55.0 + sa_arb * 3.5 + (6.0 if 0.85 <= mayer <= 2.1 else -8.0)
         )
     )
 
@@ -97,8 +94,6 @@ def run_crypto_trading_agents_committee(
     w_sum = max(w_q + w_d + w_o + w_m, 1e-6)
 
     weighted_conviction = (w_q * q_score + w_d * d_score + w_o * o_score + w_m * m_score) / w_sum
-    if fractal_score == 3 and funding_apr <= 20.0:
-        weighted_conviction = min(96.5, weighted_conviction + 2.5)
 
     spot_str = format_crypto_price(spot_price)
     vpoc_str = format_crypto_price(float(quant_metrics.get("vpoc", spot_price)))

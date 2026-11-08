@@ -89,6 +89,9 @@ export const OpportunityScanner: React.FC<OpportunityScannerProps> = ({
   const [selectedPlanMap, setSelectedPlanMap] = useState<
     Record<string, "PLAN_A_MARKET" | "PLAN_B_LIMIT_DIP" | "PLAN_C_50_50_SPLIT">
   >({});
+  const [cardTabMap, setCardTabMap] = useState<
+    Record<string, "EXECUTION" | "QUANT" | "THESIS">
+  >({});
 
   useEffect(() => {
     setSelectedPlanMap((prev) => {
@@ -285,26 +288,21 @@ export const OpportunityScanner: React.FC<OpportunityScannerProps> = ({
           TODAY'S #1 JSE A+ BARBELL PLAN HERO BANNER (SCALED TO R10K ZAR)
          ===================================================================== */}
       {s1 && s2 && (
-        <div className="rounded-xl border border-amber-500/40 bg-gradient-to-br from-slate-900 via-slate-900/95 to-indigo-950/60 p-4 shadow-xl">
+        <div className="rounded-xl border border-white/10 bg-[#080E1A] p-4 shadow-xl">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300">
+              <div className="p-2 rounded-lg bg-slate-900 border border-white/10 text-amber-400">
                 <Trophy className="w-5 h-5" />
               </div>
               <div>
                 <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight flex items-center gap-2 flex-wrap">
-                  🏆 Today&apos;s #1 JSE A+ Barbell Plan (Scaled to Your R
-                  {accountBalanceZar.toLocaleString("en-ZA")}
-                  {accountUsd !== null
-                    ? ` / ~$${accountUsd.toFixed(0)} USD`
-                    : " ZAR"}{" "}
-                  Account)
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  🏆 Today&apos;s #1 JSE A+ Barbell Plan · Multi-Asset Risk Parity
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-emerald-950/60 text-emerald-300 border border-emerald-500/30">
                     60d Pair Correlation ρ = {pairRho.toFixed(2)}
                   </span>
                 </h2>
-                <p className="text-xs text-slate-300">
-                  Institutional Uncorrelated JSE Barbell: {corePctVal}% Safe Anchor +{" "}
+                <p className="text-xs text-slate-400">
+                  Institutional Barbell: {corePctVal}% Safe Anchor +{" "}
                   {tacPctVal}% High-Velocity Leader + {resPctVal}% Dry Powder Reserve
                 </p>
               </div>
@@ -548,8 +546,8 @@ export const OpportunityScanner: React.FC<OpportunityScannerProps> = ({
         </div>
       </div>
 
-      {/* Signal Cards Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      {/* Signal Cards Grid (Responsive Auto-Fit Layout) */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-4">
         {filtered.map((opp) => {
           const tickerJo = ensureJoTicker(opp.ticker);
           const gatesPassed = opp.aplus_gates_passed ?? 10;
@@ -817,552 +815,391 @@ export const OpportunityScanner: React.FC<OpportunityScannerProps> = ({
                   </div>
                 </div>
 
-                {/* PLAIN-ENGLISH MONEY BOX (SCALED TO R10,000 ZAR) */}
-                <div className="rounded-xl bg-slate-950/90 border border-emerald-500/30 p-3">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2 font-semibold">
-                    <span>
-                      💵 PLAIN-ENGLISH MONEY BOX (Scaled to R
-                      {accountBalanceZar.toLocaleString("en-ZA")} ZAR)
-                    </span>
-                    <span className="font-mono text-emerald-300">
-                      Kelly Alloc: {allocPct.toFixed(1)}% ({shares.toFixed(3)} sh)
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div className="bg-slate-900/90 p-2 rounded border border-slate-800">
-                      <div className="text-[10px] text-slate-400">
-                        Invest Amount
-                      </div>
-                      <div className="font-mono font-extrabold text-cyan-300">
-                        R {Math.round(investZar).toLocaleString("en-ZA")}
-                      </div>
-                      <div className="text-[11px] font-mono text-slate-300">
-                        {investUsd !== null
-                          ? `~$${investUsd.toFixed(0)} USD`
-                          : `${opp.sttExempt ? "0% STT ETF" : "JSE ZAR"}`}
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/90 p-2 rounded border border-slate-800">
-                      <div className="text-[10px] text-slate-400">
-                        Buy Price (
-                        {selectedPlan === "PLAN_B_LIMIT_DIP"
-                          ? "Plan B Dip"
-                          : "Plan A/C"}
-                        )
-                      </div>
-                      <div className="font-mono font-extrabold text-white">
-                        R{planActiveEntry.toFixed(2)}
-                      </div>
-                      <div className="text-[10px] font-mono text-amber-300">
-                        Dip: R{planBPrice.toFixed(2)} ({fillProb.toFixed(0)}% Fill)
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/90 p-2 rounded border border-rose-900/40">
-                      <div className="text-[10px] text-rose-300">
-                        Protected Stop
-                      </div>
-                      <div className="font-mono font-extrabold text-rose-400">
-                        R{stopPrice.toFixed(2)}
-                      </div>
-                      <div className="text-[10px] font-mono text-rose-300">
-                        Max Loss: -R{Math.round(maxLossZar).toLocaleString("en-ZA")}
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/90 p-2 rounded border border-emerald-900/40">
-                      <div className="text-[10px] text-emerald-300">
-                        Net Target (Capped)
-                      </div>
-                      <div className="font-mono font-extrabold text-emerald-400">
-                        R{targetPrice.toFixed(2)}
-                      </div>
-                      <div className="text-[10px] font-mono text-emerald-300">
-                        Net Win: +R{Math.round(netWinZar).toLocaleString("en-ZA")}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* INTERACTIVE 3-PLAN ENTRY CALCULATOR */}
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <button
-                    onClick={() =>
-                      setSelectedPlanMap((prev) => ({
-                        ...prev,
-                        [opp.ticker]: "PLAN_A_MARKET",
-                      }))
-                    }
-                    className={`text-left p-2 rounded-lg border transition ${
-                      selectedPlan === "PLAN_A_MARKET"
-                        ? "bg-emerald-500/20 border-emerald-400 text-white shadow"
-                        : "bg-slate-950/80 hover:bg-slate-800/80 border-slate-800"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-emerald-300">
-                        PLAN A (Reclaim)
-                      </span>
-                      {recommendedPlan === "PLAN_A_MARKET" && (
-                        <span className="px-1.5 py-0.2 rounded bg-emerald-400 text-slate-950 font-black text-[9px]">
-                          AI PICK
-                        </span>
-                      )}
-                    </div>
-                    <div className="font-mono font-bold text-white">
-                      R{planAPrice.toFixed(2)}
-                    </div>
-                    <div className="text-[10px] font-mono text-slate-400">
-                      R:R{" "}
-                      <span className="text-emerald-300 font-bold">
-                        {safeNum(opp.net_rr_market ?? opp.netRrRatio, 1.8)}x
-                      </span>{" "}
-                      • EV{" "}
-                      {safeNum(opp.ev_plan_a_pct, 1.85) >= 0 ? "+" : ""}
-                      {safeNum(opp.ev_plan_a_pct, 1.85).toFixed(2)}%
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      setSelectedPlanMap((prev) => ({
-                        ...prev,
-                        [opp.ticker]: "PLAN_B_LIMIT_DIP",
-                      }))
-                    }
-                    className={`text-left p-2 rounded-lg border transition ${
-                      selectedPlan === "PLAN_B_LIMIT_DIP"
-                        ? "bg-amber-500/20 border-amber-400 text-white shadow"
-                        : "bg-slate-950/80 hover:bg-slate-800/80 border-amber-500/30"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-amber-300">
-                        PLAN B (MAE Dip • {fillProb.toFixed(0)}%)
-                      </span>
-                      {recommendedPlan === "PLAN_B_LIMIT_DIP" && (
-                        <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-black text-[9px]">
-                          AI PICK
-                        </span>
-                      )}
-                    </div>
-                    <div className="font-mono font-bold text-amber-200">
-                      R{planBPrice.toFixed(2)}
-                    </div>
-                    <div className="text-[10px] font-mono text-slate-400">
-                      R:R{" "}
-                      <span className="text-amber-300 font-bold">
-                        {safeNum(opp.net_rr_limit_dip, 2.1)}x
-                      </span>{" "}
-                      • EV{" "}
-                      {safeNum(opp.ev_plan_b_pct, 2.35) >= 0 ? "+" : ""}
-                      {safeNum(opp.ev_plan_b_pct, 2.35).toFixed(2)}%
-                    </div>
-                  </button>
-
-                  <button
-                    disabled={!planCViable}
-                    onClick={() => {
-                      if (planCViable) {
-                        setSelectedPlanMap((prev) => ({
+                  {/* 3-Tab Card Architecture (Upgrade 4) */}
+                  <div className="flex items-center gap-1 p-0.5 bg-slate-950 rounded-lg border border-white/10 mb-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCardTabMap((prev) => ({
                           ...prev,
-                          [opp.ticker]: "PLAN_C_50_50_SPLIT",
-                        }));
+                          [opp.ticker]: "EXECUTION",
+                        }))
                       }
-                    }}
-                    title={
-                      !planCViable
-                        ? "40% Reserve Leg < R1,250: 60/40 split disabled to prevent double brokerage fee drag"
-                        : "60% Anti-Knife Reclaim + 40% MAE Dip Reserve"
-                    }
-                    className={`text-left p-2 rounded-lg border transition ${
-                      !planCViable
-                        ? "bg-slate-950/40 border-slate-800/50 text-slate-600 opacity-50 cursor-not-allowed"
-                        : selectedPlan === "PLAN_C_50_50_SPLIT"
-                        ? "bg-cyan-500/20 border-cyan-400 text-white shadow"
-                        : "bg-slate-950/80 hover:bg-slate-800/80 border-cyan-500/30"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-cyan-300">
-                        PLAN C (60/40 Elastic)
-                      </span>
-                      {recommendedPlan === "PLAN_C_50_50_SPLIT" &&
-                        planCViable && (
-                          <span className="px-1.5 py-0.2 rounded bg-cyan-400 text-slate-950 font-black text-[9px]">
-                            AI PICK
-                          </span>
-                        )}
-                    </div>
-                    <div className="font-mono font-bold text-cyan-200">
-                      R{planCPrice.toFixed(2)}
-                    </div>
-                    <div className="text-[10px] font-mono text-slate-400">
-                      {planCViable ? (
-                        <>
-                          R:R{" "}
-                          <span className="text-cyan-300 font-bold">
-                            {safeNum(opp.blended_net_rr, 1.95)}x
-                          </span>{" "}
-                          • EV +{safeNum(opp.ev_plan_c_pct, 2.1).toFixed(2)}%
-                        </>
-                      ) : (
-                        "Min R1,250/leg guard"
-                      )}
-                    </div>
-                  </button>
-                </div>
-
-                {/* Elastic 60/40 & Anti-Knife Execution Box + 4-Step Institutional Shield Ladder */}
-                <div className="rounded-lg bg-slate-950/90 border border-slate-800 p-2.5 space-y-1.5 font-mono text-[11px]">
-                  <div className="flex flex-wrap items-center justify-between gap-1 text-slate-200">
-                    <span>
-                      <strong className="text-amber-300">
-                        🧠 Why {recommendedPlan.replace(/_/g, " ")}:
-                      </strong>{" "}
-                      {opp.entry_plan_reason ||
-                        "Maximizes Fill-Probability-Weighted Expected Value (EV) with adverse-selection protection."}
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 text-[10px]">
-                      TTL: {opp.limit_order_ttl_hours || 8}h •{" "}
-                      {opp.limit_execution_mode || "ELASTIC_60_40_ANTIKNIFE"}
-                    </span>
+                      className={`flex-1 py-1 px-2 rounded text-xs font-bold transition flex items-center justify-center gap-1 ${
+                        (cardTabMap[opp.ticker] || "EXECUTION") === "EXECUTION"
+                          ? "bg-slate-800 text-white shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      🎯 Execution &amp; Ladder
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCardTabMap((prev) => ({
+                          ...prev,
+                          [opp.ticker]: "QUANT",
+                        }))
+                      }
+                      className={`flex-1 py-1 px-2 rounded text-xs font-bold transition flex items-center justify-center gap-1 ${
+                        (cardTabMap[opp.ticker] || "EXECUTION") === "QUANT"
+                          ? "bg-slate-800 text-white shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      📊 Quant Matrix
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCardTabMap((prev) => ({
+                          ...prev,
+                          [opp.ticker]: "THESIS",
+                        }))
+                      }
+                      className={`flex-1 py-1 px-2 rounded text-xs font-bold transition flex items-center justify-center gap-1 ${
+                        (cardTabMap[opp.ticker] || "EXECUTION") === "THESIS"
+                          ? "bg-slate-800 text-white shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      🏛️ Thesis &amp; 12-Gate
+                    </button>
                   </div>
 
-                  {/* Elastic 60/40 & Stop-Hunt Protected SL Strip */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-slate-800/80 text-[10px]">
-                    <div className="bg-slate-900 px-2 py-1 rounded border border-cyan-500/30">
-                      <span className="text-slate-400 block">
-                        60% Anti-Knife Reclaim
-                      </span>
-                      <strong className="text-cyan-300">
-                        R{reclaimTriggerPrice.toFixed(2)}
-                      </strong>
-                    </div>
-                    <div className="bg-slate-900 px-2 py-1 rounded border border-amber-500/30">
-                      <span className="text-slate-400 block">
-                        40% MAE Dip Reserve
-                      </span>
-                      <strong className="text-amber-300">
-                        R{maeReservePrice.toFixed(2)}
-                      </strong>
-                    </div>
-                    <div className="bg-slate-900 px-2 py-1 rounded border border-indigo-500/30">
-                      <span className="text-slate-400 block">
-                        Blended 60/40 Entry
-                      </span>
-                      <strong className="text-indigo-300">
-                        R{planCPrice.toFixed(2)}
-                      </strong>
-                    </div>
-                    <div className="bg-slate-900 px-2 py-1 rounded border border-rose-500/40">
-                      <span className="text-slate-400 block">
-                        Stop-Hunt Protected SL
-                      </span>
-                      <strong className="text-rose-300">
-                        R{stopHuntProtectedSl.toFixed(2)}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {/* 4-Step Institutional Shield Ladder (TP0 -> TP3) */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-slate-800/80 text-[10px]">
-                    <div className="bg-emerald-950/40 px-2 py-1 rounded border border-emerald-400/60">
-                      <span className="text-emerald-200 font-bold block">
-                        🛡️ TP0 (20% Zero-Risk)
-                      </span>
-                      <strong className="text-emerald-300">
-                        R{tp0Price.toFixed(2)}
-                      </strong>{" "}
-                      <span className="text-slate-300">
-                        → Lock R{breakevenLockPrice.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="bg-slate-900 px-2 py-1 rounded border border-emerald-500/30">
-                      <span className="text-slate-400 block">
-                        🎯 TP1 (30% Banked)
-                      </span>
-                      <strong className="text-emerald-300">
-                        R{tp1Price.toFixed(2)}
-                      </strong>
-                    </div>
-                    <div className="bg-slate-900 px-2 py-1 rounded border border-cyan-500/30">
-                      <span className="text-slate-400 block">
-                        💰 TP2 (30% Mid)
-                      </span>
-                      <strong className="text-cyan-300">
-                        R{tp2Price.toFixed(2)}
-                      </strong>
-                    </div>
-                    <div className="bg-slate-900 px-2 py-1 rounded border border-indigo-500/30">
-                      <span className="text-slate-400 block">
-                        🚀 TP3 (20% Runner)
-                      </span>
-                      <strong className="text-indigo-300">
-                        R{tp3Price.toFixed(2)}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 text-[10px] text-slate-400">
-                    <span>
-                      PAVA Win:{" "}
-                      <strong className="text-emerald-300">
-                        {fmtOptMetric(
-                          opp.calibrated_win_prob_pct ??
-                            opp.regimeConditionedWinRate,
-                          1,
-                          "%"
-                        )}
-                      </strong>
-                    </span>
-                    <span>
-                      Bridge Hit:{" "}
-                      <strong className="text-amber-300">
-                        {safeNum(opp.mc_barrier_hit_prob_pct, 64.2).toFixed(1)}%
-                      </strong>
-                    </span>
-                    <span>
-                      CVaR 97.5:{" "}
-                      <strong className="text-rose-300">
-                        -{safeNum(opp.cvar_975_pct, 1.75).toFixed(2)}%
-                      </strong>
-                    </span>
-                    <span>
-                      BOCPD:{" "}
-                      <strong className="text-cyan-300">
-                        {safeNum(opp.bocpd_changepoint_prob_pct, 8.4).toFixed(1)}%
-                      </strong>
-                    </span>
-                    <span>
-                      Rough H:{" "}
-                      <strong className="text-indigo-300">
-                        {safeNum(opp.rough_vol_hurst, 0.18).toFixed(2)}
-                      </strong>
-                    </span>
-                    <span>
-                      HRP Wt:{" "}
-                      <strong className="text-emerald-300">
-                        {safeNum(opp.hrp_weight_pct, 12.5).toFixed(1)}%
-                      </strong>
-                    </span>
-                  </div>
-
-                  {/* Data Truth & Microstructure Telemetry Strip */}
-                  <div className="flex flex-wrap items-center justify-between gap-1.5 mt-1 px-2.5 py-1 rounded bg-slate-950/90 border border-cyan-500/30 text-[10px] font-mono text-slate-300">
-                    <span>
-                      🛡️ Data Truth:{" "}
-                      <strong className="text-emerald-300">
-                        {safeNum(
-                          (opp as any).data_quality_score_pct,
-                          96.8
-                        ).toFixed(1)}
-                        %
-                      </strong>
-                    </span>
-                    <span>
-                      📐 Effective Spread:{" "}
-                      <strong className="text-cyan-300">
-                        {safeNum(
-                          (opp as any).effective_spread_pct ??
-                            opp.corwinSchultzSpreadPct,
-                          0.12
-                        ).toFixed(2)}
-                        %
-                      </strong>
-                    </span>
-                    <span>
-                      ⚡ GKYZ Vol:{" "}
-                      <strong className="text-amber-300">
-                        {safeNum(
-                          (opp as any).gkyz_daily_vol_pct ??
-                            opp.harRvDailyVolPct,
-                          1.65
-                        ).toFixed(2)}
-                        %/d
-                      </strong>
-                    </span>
-                    <span>
-                      ⏱️ Pace RVOL:{" "}
-                      <strong className="text-indigo-300">
-                        {safeNum(
-                          (opp as any).intraday_rvol_pace ?? opp.rvol,
-                          1.25
-                        ).toFixed(2)}
-                        x
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-
-                {/* WHY THE AI LOVES THIS TRADE */}
-                {opp.why_ai_loves_bullets &&
-                  opp.why_ai_loves_bullets.length > 0 && (
-                    <div className="rounded-lg bg-slate-950/70 border border-slate-800/90 p-2.5 space-y-1.5">
-                      <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">
-                        ✨ Why the AI Loves This Trade
-                      </div>
-                      <div className="space-y-1">
-                        {opp.why_ai_loves_bullets.slice(0, 4).map((b, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-start justify-between gap-2 text-xs text-slate-300"
-                          >
-                            <div>
-                              <span className="text-emerald-400 font-bold mr-1">
-                                •
-                              </span>
-                              <span>{b}</span>
-                            </div>
-                            <span
-                              title="Institutional JSE Quant & Microstructure Signal"
-                              className="text-slate-500 hover:text-cyan-300 cursor-help shrink-0 mt-0.5"
-                            >
-                              <HelpCircle className="w-3.5 h-3.5" />
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {/* PRO QUANT TELEMETRY (Shown when Pro Quant View is active) */}
-                {!simpleSniperView && (
-                  <div className="space-y-2 pt-1 border-t border-slate-800/80">
-                    <div className="grid grid-cols-3 gap-2 text-[11px] bg-slate-950/70 p-2.5 rounded-lg border border-slate-800/80">
-                      <div>
-                        <span className="text-slate-400 block">
-                          Offshore &amp; SOTP Parity
-                        </span>
-                        <span className="font-mono text-indigo-300 font-semibold">
-                          {opp.offshoreTicker
-                            ? `${opp.offshoreTicker} (R${safeNum(
-                                opp.offshoreParityZar,
-                                planAPrice
-                              ).toFixed(0)})`
-                            : `Twin ${opp.twinTicker || "JSE Top40"}`}
-                        </span>
-                        <span className="block text-[10px] text-slate-400 font-mono">
-                          {opp.offshoreArbSignal} (Z={opp.offshoreArbZscore}σ)
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block">
-                          JSE SENS &amp; 60d VPOC
-                        </span>
-                        <span className="font-mono text-emerald-300 font-semibold">
-                          VPOC R{safeNum(opp.vpocPriceZar, planAPrice).toFixed(0)}
-                        </span>
-                        <span className="block text-[10px] text-slate-400 font-mono truncate">
-                          {opp.sensCatalystBadge}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block">
-                          5-Yr Walk-Forward
-                        </span>
-                        <span className="font-mono text-amber-300 font-semibold">
-                          WR {fmtOptMetric(opp.regimeConditionedWinRate, 1, "%")}
-                        </span>
-                        <span className="block text-[10px] text-slate-400 font-mono">
-                          PF {fmtOptMetric(opp.profitFactor, 2, "x")} • PSR{" "}
-                          {(safeNum(opp.probabilisticSharpePsr, 0.85) * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 font-mono px-1">
-                      <span>HAR Vol: {opp.harRvDailyVolPct}%</span>
-                      <span>OU τ: {opp.ouHalfLifeDays}d</span>
-                      <span>Hurst: {opp.hurstExponent}</span>
-                      <span>Entropy: {opp.shannonEntropyNorm}</span>
-                      <span>VPIN: {opp.vpinToxicity}</span>
-                      <span className="text-sky-300 font-semibold">
-                        RRG: {opp.rrgQuadrant} (RS {opp.rsRating1to99})
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* EXPANDABLE 12-GATE A+ SNIPER CHECKLIST */}
-                <div className="border border-slate-800 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => toggleGates(opp.ticker)}
-                    className="w-full px-3 py-1.5 bg-slate-950/90 hover:bg-slate-900 flex items-center justify-between text-xs font-bold text-slate-300 transition"
-                  >
-                    <span>
-                      🛡️ 12-Gate Institutional A+ Sniper Checklist ({gatesPassed}/12 Passed)
-                    </span>
-                    {gatesExpanded ? (
-                      <ChevronUp className="w-4 h-4 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
-                    )}
-                  </button>
-                  {gatesExpanded && (
-                    <div className="p-2.5 bg-slate-950/95 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
-                      {(opp.aplus_checklist_items || []).map((g) => (
-                        <div
-                          key={g.gate_num}
-                          title={g.plain_english}
-                          className={`p-1.5 rounded border flex items-center justify-between gap-2 ${
-                            g.passed
-                              ? "bg-emerald-950/25 border-emerald-800/40 text-emerald-200"
-                              : "bg-rose-950/25 border-rose-800/40 text-rose-200"
+                  {/* TAB 1: EXECUTION */}
+                  {(cardTabMap[opp.ticker] || "EXECUTION") === "EXECUTION" && (
+                    <div className="space-y-2.5">
+                      {/* INTERACTIVE 3-PLAN ENTRY CALCULATOR */}
+                      <div className="grid grid-cols-3 gap-1.5 text-xs font-mono">
+                        <button
+                          onClick={() =>
+                            setSelectedPlanMap((prev) => ({
+                              ...prev,
+                              [opp.ticker]: "PLAN_A_MARKET",
+                            }))
+                          }
+                          className={`text-left p-1.5 rounded-lg border transition ${
+                            selectedPlan === "PLAN_A_MARKET"
+                              ? "bg-slate-800 border-white/30 text-white"
+                              : "bg-slate-950/80 hover:bg-slate-900 border-white/5 text-slate-400"
                           }`}
                         >
-                          <div className="flex items-center gap-1.5 truncate">
-                            {g.passed ? (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                            ) : (
-                              <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          <div className="flex items-center justify-between text-[10px] font-bold">
+                            <span>Plan A (Reclaim)</span>
+                            {recommendedPlan === "PLAN_A_MARKET" && (
+                              <span className="px-1 py-0.2 rounded bg-emerald-400 text-slate-950 font-black text-[8px]">
+                                AI
+                              </span>
                             )}
-                            <span className="font-semibold truncate">
-                              G{g.gate_num}. {g.name}
-                            </span>
                           </div>
-                          <span className="font-mono text-[10px] text-slate-300 shrink-0">
-                            {g.actual_value}
+                          <div className="font-mono font-bold text-white text-[11px] tabular-nums">
+                            R{planAPrice.toFixed(2)}
+                          </div>
+                          <div className="text-[9px] font-mono text-slate-400">
+                            R:R {safeNum(opp.net_rr_market ?? opp.netRrRatio, 1.8)}x
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            setSelectedPlanMap((prev) => ({
+                              ...prev,
+                              [opp.ticker]: "PLAN_B_LIMIT_DIP",
+                            }))
+                          }
+                          className={`text-left p-1.5 rounded-lg border transition ${
+                            selectedPlan === "PLAN_B_LIMIT_DIP"
+                              ? "bg-slate-800 border-white/30 text-white"
+                              : "bg-slate-950/80 hover:bg-slate-900 border-white/5 text-slate-400"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-[10px] font-bold">
+                            <span>Plan B (MAE Dip)</span>
+                            {recommendedPlan === "PLAN_B_LIMIT_DIP" && (
+                              <span className="px-1 py-0.2 rounded bg-amber-400 text-slate-950 font-black text-[8px]">
+                                AI
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-mono font-bold text-amber-200 text-[11px] tabular-nums">
+                            R{planBPrice.toFixed(2)}
+                          </div>
+                          <div className="text-[9px] font-mono text-slate-400">
+                            {fillProb.toFixed(0)}% Fill · {safeNum(opp.net_rr_limit_dip, 2.1)}x
+                          </div>
+                        </button>
+
+                        <button
+                          disabled={!planCViable}
+                          onClick={() => {
+                            if (planCViable) {
+                              setSelectedPlanMap((prev) => ({
+                                ...prev,
+                                [opp.ticker]: "PLAN_C_50_50_SPLIT",
+                              }));
+                            }
+                          }}
+                          className={`text-left p-1.5 rounded-lg border transition ${
+                            !planCViable
+                              ? "bg-slate-950/40 border-white/5 text-slate-600 opacity-50 cursor-not-allowed"
+                              : selectedPlan === "PLAN_C_50_50_SPLIT"
+                              ? "bg-slate-800 border-white/30 text-white"
+                              : "bg-slate-950/80 hover:bg-slate-900 border-white/5 text-slate-400"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-[10px] font-bold">
+                            <span>Plan C (60/40)</span>
+                            {recommendedPlan === "PLAN_C_50_50_SPLIT" && planCViable && (
+                              <span className="px-1 py-0.2 rounded bg-cyan-400 text-slate-950 font-black text-[8px]">
+                                AI
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-mono font-bold text-cyan-200 text-[11px] tabular-nums">
+                            R{planCPrice.toFixed(2)}
+                          </div>
+                          <div className="text-[9px] font-mono text-slate-400">
+                            {planCViable ? `R:R ${safeNum(opp.blended_net_rr, 1.95)}x` : "Guard"}
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Single Source of Truth Capital Allocation Slice */}
+                      <div className="rounded-lg bg-slate-950 p-2 border border-white/5 font-mono text-[11px]">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 font-semibold">
+                          <span>💵 Capital Allocation</span>
+                          <span className="font-mono text-slate-300">
+                            {allocPct.toFixed(1)}% Kelly ({shares.toFixed(2)} sh)
                           </span>
                         </div>
-                      ))}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
+                          <div className="bg-slate-900/90 p-1.5 rounded border border-white/5">
+                            <div className="text-[9px] text-slate-400">Slice Amount</div>
+                            <div className="font-mono font-bold text-white tabular-nums">
+                              R {Math.round(investZar).toLocaleString("en-ZA")}
+                            </div>
+                          </div>
+                          <div className="bg-slate-900/90 p-1.5 rounded border border-white/5">
+                            <div className="text-[9px] text-slate-400">Entry Price</div>
+                            <div className="font-mono font-bold text-white tabular-nums">
+                              R{planActiveEntry.toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="bg-slate-900/90 p-1.5 rounded border border-white/5">
+                            <div className="text-[9px] text-slate-400">Protected Stop</div>
+                            <div className="font-mono font-bold text-rose-400 tabular-nums">
+                              R{stopPrice.toFixed(2)}
+                            </div>
+                          </div>
+                          <div className="bg-slate-900/90 p-1.5 rounded border border-white/5">
+                            <div className="text-[9px] text-slate-400">Net Target</div>
+                            <div className="font-mono font-bold text-emerald-400 tabular-nums">
+                              R{targetPrice.toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Elastic 60/40 & Stop-Hunt Strip */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 font-mono text-[10px]">
+                        <div className="bg-slate-950 p-1 rounded border border-white/5">
+                          <span className="text-slate-500 block text-[9px]">Reclaim</span>
+                          <strong className="text-slate-200 tabular-nums">R{reclaimTriggerPrice.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-950 p-1 rounded border border-white/5">
+                          <span className="text-slate-500 block text-[9px]">MAE Reserve</span>
+                          <strong className="text-slate-200 tabular-nums">R{maeReservePrice.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-950 p-1 rounded border border-white/5">
+                          <span className="text-slate-500 block text-[9px]">Blended 60/40</span>
+                          <strong className="text-slate-200 tabular-nums">R{planCPrice.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-950 p-1 rounded border border-white/5">
+                          <span className="text-slate-500 block text-[9px]">Stop-Hunt SL</span>
+                          <strong className="text-rose-400 tabular-nums">R{stopHuntProtectedSl.toFixed(2)}</strong>
+                        </div>
+                      </div>
+
+                      {/* 4-Step Institutional Shield Ladder */}
+                      <div className="grid grid-cols-4 gap-1 font-mono text-[10px] text-slate-300">
+                        <div className="bg-slate-950 p-1 rounded border border-white/5">
+                          <span className="text-slate-500 block text-[9px]">TP0 (20%)</span>
+                          <strong className="text-emerald-400 tabular-nums">R{tp0Price.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-950 p-1 rounded border border-white/5">
+                          <span className="text-slate-500 block text-[9px]">TP1 (30%)</span>
+                          <strong className="text-emerald-400 tabular-nums">R{tp1Price.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-950 p-1 rounded border border-white/5">
+                          <span className="text-slate-500 block text-[9px]">TP2 (30%)</span>
+                          <strong className="text-emerald-400 tabular-nums">R{tp2Price.toFixed(2)}</strong>
+                        </div>
+                        <div className="bg-slate-950 p-1 rounded border border-white/5">
+                          <span className="text-slate-500 block text-[9px]">TP3 (20%)</span>
+                          <strong className="text-emerald-400 tabular-nums">R{tp3Price.toFixed(2)}</strong>
+                        </div>
+                      </div>
+
+                      {/* Primary Execution Buttons */}
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <button
+                          onClick={() => onOpenEasyEquitiesTicket(opp)}
+                          className="flex-1 py-1.5 px-3 rounded bg-[#10b981] hover:brightness-110 text-slate-950 text-xs font-extrabold flex items-center justify-center gap-1 shadow-sm transition"
+                        >
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          <span>Order Ticket</span>
+                        </button>
+                        <button
+                          onClick={() => onOneClickPaperBuy(opp)}
+                          className="py-1.5 px-2.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 text-xs font-bold flex items-center gap-1 transition"
+                        >
+                          <Zap className="w-3 h-3 text-slate-400" />
+                          <span>Paper</span>
+                        </button>
+                        <button
+                          onClick={() => onOpenLogTradeModal(opp)}
+                          className="py-1.5 px-2.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-white/10 text-xs font-bold flex items-center gap-1 transition"
+                        >
+                          <PlusCircle className="w-3 h-3 text-slate-400" />
+                          <span>Log</span>
+                        </button>
+                      </div>
                     </div>
                   )}
-                </div>
 
-                {/* Action Footer Buttons */}
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    onClick={() => onOpenEasyEquitiesTicket(opp)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow transition"
-                  >
-                    <ClipboardList className="w-3.5 h-3.5" />
-                    📋 Order Ticket
-                  </button>
-                  <button
-                    onClick={() => onOpenDeepQuantModal(opp)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition"
-                  >
-                    <Microscope className="w-3.5 h-3.5" />
-                    🔬 Deep Quant &amp; Debate
-                  </button>
-                  <button
-                    onClick={() => onOneClickPaperBuy(opp)}
-                    title="Execute 1-Click JSE Paper Buy"
-                    className="py-2 px-2.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/35 text-sky-200 border border-sky-500/40 text-xs font-bold transition flex items-center gap-1"
-                  >
-                    <Zap className="w-3.5 h-3.5 text-sky-300" />
-                    Paper
-                  </button>
-                  <button
-                    onClick={() => onOpenLogTradeModal(opp)}
-                    className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
-                    + Log Trade
-                  </button>
-                </div>
+                  {/* TAB 2: QUANT MATRIX */}
+                  {(cardTabMap[opp.ticker] || "EXECUTION") === "QUANT" && (
+                    <div className="space-y-2 font-mono text-[11px]">
+                      <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-2 rounded-lg border border-white/5 text-[10px] tabular-nums">
+                        <div className="p-1 rounded bg-slate-900/60 border border-white/5">
+                          <span className="text-slate-500 block">PAVA Win Prob</span>
+                          <span className="font-semibold text-slate-200">
+                            {fmtOptMetric(opp.calibrated_win_prob_pct ?? opp.regimeConditionedWinRate, 1, "%")}
+                          </span>
+                        </div>
+                        <div className="p-1 rounded bg-slate-900/60 border border-white/5">
+                          <span className="text-slate-500 block">Bridge Hit</span>
+                          <span className="font-semibold text-slate-200">
+                            {safeNum(opp.mc_barrier_hit_prob_pct, 64.2).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="p-1 rounded bg-slate-900/60 border border-white/5">
+                          <span className="text-slate-500 block">CVaR 97.5</span>
+                          <span className="font-semibold text-slate-200">
+                            -{safeNum(opp.cvar_975_pct, 1.75).toFixed(2)}%
+                          </span>
+                        </div>
+                        <div className="p-1 rounded bg-slate-900/60 border border-white/5">
+                          <span className="text-slate-500 block">BOCPD Prob</span>
+                          <span className="font-semibold text-slate-200">
+                            {safeNum(opp.bocpd_changepoint_prob_pct, 8.4).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="p-1 rounded bg-slate-900/60 border border-white/5">
+                          <span className="text-slate-500 block">Rough H</span>
+                          <span className="font-semibold text-slate-200">
+                            {safeNum(opp.rough_vol_hurst, 0.18).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="p-1 rounded bg-slate-900/60 border border-white/5">
+                          <span className="text-slate-500 block">HRP Weight</span>
+                          <span className="font-semibold text-slate-200">
+                            {safeNum(opp.hrp_weight_pct, 12.5).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-slate-950 p-2 rounded-lg border border-white/5 text-[10px] text-slate-400 tabular-nums">
+                        <div>
+                          <span className="block text-slate-500">Data Truth</span>
+                          <span className="font-semibold text-slate-300">
+                            {safeNum((opp as any).data_quality_score_pct, 96.8).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-slate-500">Eff Spread</span>
+                          <span className="font-semibold text-slate-300">
+                            {safeNum((opp as any).effective_spread_pct ?? opp.corwinSchultzSpreadPct, 0.12).toFixed(2)}%
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-slate-500">GKYZ Vol</span>
+                          <span className="font-semibold text-slate-300">
+                            {safeNum((opp as any).gkyz_daily_vol_pct ?? opp.harRvDailyVolPct, 1.65).toFixed(2)}%/d
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-slate-500">Pace RVOL</span>
+                          <span className="font-semibold text-slate-300">
+                            {safeNum((opp as any).intraday_rvol_pace ?? opp.rvol, 1.25).toFixed(2)}x
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1 bg-slate-950 p-2 rounded-lg border border-white/5 text-[10px] text-slate-400">
+                        <div>VPOC: R{safeNum(opp.vpocPriceZar, planAPrice).toFixed(0)}</div>
+                        <div>RRG: {opp.rrgQuadrant || "LEADING"}</div>
+                        <div>VPIN: {opp.vpinToxicity || "0.14"}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 3: THESIS & 12-GATE */}
+                  {(cardTabMap[opp.ticker] || "EXECUTION") === "THESIS" && (
+                    <div className="space-y-2.5">
+                      {opp.why_ai_loves_bullets && opp.why_ai_loves_bullets.length > 0 && (
+                        <div className="rounded-lg bg-slate-950 p-2.5 space-y-1 border border-white/5">
+                          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
+                            Institutional Rationale
+                          </span>
+                          <div className="space-y-1 text-xs text-slate-300">
+                            {opp.why_ai_loves_bullets.slice(0, 3).map((b, idx) => (
+                              <div key={idx} className="flex items-start gap-1 text-[11px]">
+                                <span className="text-slate-500">•</span>
+                                <span className="text-slate-300">{b}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="rounded-lg bg-slate-950 p-2 border border-white/5">
+                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-1.5">
+                          <span>12-Gate Institutional Checklist</span>
+                          <span className="text-emerald-400 font-mono text-[10px]">{gatesPassed}/12 Passed</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[10px]">
+                          {(opp.aplus_checklist_items || []).slice(0, 6).map((g) => (
+                            <div
+                              key={g.gate_num}
+                              className="p-1 rounded bg-slate-900/60 border border-white/5 flex items-center justify-between gap-1 text-slate-300"
+                            >
+                              <div className="flex items-center gap-1 truncate">
+                                {g.passed ? (
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                                ) : (
+                                  <XCircle className="w-3 h-3 text-rose-400 shrink-0" />
+                                )}
+                                <span className="truncate">G{g.gate_num}. {g.name}</span>
+                              </div>
+                              <span className="font-mono text-[9px] text-slate-500 shrink-0">
+                                {g.actual_value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => onOpenDeepQuantModal(opp)}
+                        className="w-full py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-200 border border-white/10 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+                      >
+                        <Microscope className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Launch Deep Quant &amp; Debate Modal</span>
+                      </button>
+                    </div>
+                  )}
               </div>
             </div>
           );

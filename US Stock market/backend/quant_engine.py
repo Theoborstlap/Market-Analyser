@@ -667,12 +667,18 @@ def build_us_equity_signal(
     dip_gross_dn_pct = ((limit_dip_entry_price - stop_loss) / max(limit_dip_entry_price, 1e-8)) * 100.0
     dip_net_up_pct = max(0.50, dip_gross_up_pct - us_fee_pct)
     dip_net_dn_pct = max(0.35, dip_gross_dn_pct + us_fee_pct)
-    net_rr_limit_dip = round(max(1.76, dip_net_up_pct / max(dip_net_dn_pct, 1e-6)), 2)
+    net_rr_limit_dip = round(dip_net_up_pct / max(dip_net_dn_pct, 1e-6), 2)
 
     # 24-Hour Limit Dip Fill Probability (limit_fill_prob_pct) via Brownian Motion Reflection Principle & sigma_YZ,daily
+    # Penalized by order flow toxicity / volatility intensity for adverse selection honesty
+    micro_data = compute_fracdiff_hurst_entropy_wasserstein(closes, highs, lows, volumes)
+    vpin_tox = float(micro_data.get("vpin", 0.40))
+    vol_intensity_pen = min(0.35, max(0.0, (yz_daily_sigma - 0.015) * 6.0))
+    adverse_selection_mult = max(0.25, 1.0 - 0.45 * vpin_tox - vol_intensity_pen)
     log_dist = abs(math.log(max(spot_price, 1e-8) / max(limit_dip_entry_price, 1e-8)))
+    raw_fill_prob = 100.0 * 2.0 * _norm_cdf(-log_dist / max(yz_daily_sigma, 1e-6))
     limit_fill_prob_pct = round(
-        min(99.0, max(18.0, 100.0 * 2.0 * _norm_cdf(-log_dist / max(yz_daily_sigma, 1e-6)))),
+        min(99.0, max(5.0, raw_fill_prob * adverse_selection_mult)),
         1
     )
 
@@ -702,7 +708,6 @@ def build_us_equity_signal(
 
     # 5. 4-State Markov Switching & Microstructure
     markov_data = compute_4state_markov_chain(closes, highs, lows, horizon_days=5)
-    micro_data = compute_fracdiff_hurst_entropy_wasserstein(closes, highs, lows, volumes)
 
     # 6. 2D Kalman Twin Spread & RRG vs SPY
     twin_symbol = meta.get("twin", "SPY")
@@ -716,16 +721,23 @@ def build_us_equity_signal(
     res_mom_res = compute_residual_momentum(closes, spy_closes)
     residual_momentum_z = round(float(res_mom_res.get("residual_momentum_z", 0.0)), 2)
 
-    # 7. Multi-Timeframe Fractal Alignment (15m / 1H / 1D)
-    ema10 = float(np.mean(closes[-10:]))
+    # 7. Multi-Timeframe Fractal Alignment (True 15m / 1H / 1D OHLCV Bars)
+    c15 = series.get("closes_15m")
+    c1h = series.get("closes_1h")
     ema20 = float(np.mean(closes[-20:]))
     ema50 = float(np.mean(closes[-50:]))
-    tf_15m = "BULL" if spot_price >= ema10 * 0.994 else "NEUTRAL"
-    tf_1h = "BULL" if ema10 >= ema20 * 0.994 else "NEUTRAL"
-    tf_1d = "BULL" if ema20 >= ema50 * 0.990 else "NEUTRAL"
+    if c15 is not None and len(c15) >= 20:
+        tf_15m = "BULL" if float(c15[-1]) >= float(np.mean(c15[-10:])) and float(np.mean(c15[-10:])) >= float(np.mean(c15[-20:])) else "NEUTRAL"
+    else:
+        ema10 = float(np.mean(closes[-10:]))
+        tf_15m = "BULL" if spot_price >= ema10 and closes[-1] > closes[-3] else "NEUTRAL"
+    if c1h is not None and len(c1h) >= 20:
+        tf_1h = "BULL" if float(c1h[-1]) >= float(np.mean(c1h[-10:])) and float(np.mean(c1h[-10:])) >= float(np.mean(c1h[-20:])) else "NEUTRAL"
+    else:
+        ema10 = float(np.mean(closes[-10:]))
+        tf_1h = "BULL" if ema10 >= ema20 else "NEUTRAL"
+    tf_1d = "BULL" if spot_price >= ema20 and ema20 >= ema50 else "NEUTRAL"
     fractal_aligned_count = sum(1 for x in (tf_15m, tf_1h, tf_1d) if x == "BULL")
-    if fractal_aligned_count < 2:
-        tf_15m, tf_1h, fractal_aligned_count = "BULL", "BULL", 2
 
     # 8. 5-Year Walk-Forward Backtest
     bt_data = run_causal_5y_walk_forward_backtest(
@@ -739,10 +751,10 @@ def build_us_equity_signal(
 
     # 9. Merton Volatility-Targeted Fractional Kelly Sizing
     win_prob = float(bt_data["shrunk_win_rate_pct"]) / 100.0
-    b_odds = max(net_rr_market, blended_net_rr, 1.35)
+    b_odds = max(net_rr_market, blended_net_rr, 0.50)
     raw_kelly = max(0.0, win_prob - (1.0 - win_prob) / b_odds)
     vol_target_scalar = min(1.25, 22.0 / max(yz_vol, 12.0))
-    half_kelly_pct = round(max(4.5, min(20.0, raw_kelly * 0.50 * vol_target_scalar * 100.0)), 2)
+    half_kelly_pct = round(max(0.0, min(20.0, raw_kelly * 0.50 * vol_target_scalar * 100.0)), 2)
 
     # 10. SEC EDGAR Form 4 / 8-K, Finviz & Extended Hours
     sec_intel = fetch_sec_finviz_wsb_intel(symbol, closes, volumes)

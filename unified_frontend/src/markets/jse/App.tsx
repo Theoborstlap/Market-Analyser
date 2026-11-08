@@ -1512,8 +1512,8 @@ export default function SovereignJseTerminalPage({
 
         return (
           <div className="max-w-[1640px] w-full mx-auto px-4 pt-3">
-            <div className="bg-gradient-to-r from-[#0B1222] via-[#0F172A] to-[#0B1222] border border-cyan-500/40 rounded-xl p-3.5 shadow-xl">
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-800">
+            <div className="bg-gradient-to-r from-[#0B1222] via-[#0F172A] to-[#0B1222] border border-white/10 rounded-xl p-3.5 shadow-xl">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-white/10">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
                     🌍 V13.0 CROSS-MARKET &ldquo;BEST OF ALL 3 WORLDS&rdquo; META-ALLOCATOR
@@ -1523,13 +1523,6 @@ export default function SovereignJseTerminalPage({
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
-                  <span className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-300">
-                    Capital:{" "}
-                    <strong className="text-white">
-                      R{accountBalanceZar.toLocaleString("en-ZA")} (~$
-                      {(accountBalanceZar / fxRate).toFixed(2)} USD)
-                    </strong>
-                  </span>
                   <span className="px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300">
                     Combined Net Profit:{" "}
                     <strong>

@@ -30,6 +30,12 @@ from database import (
     set_paper_core_meta,
     update_paper_signal_grading,
 )
+import os
+import sys
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.microstructure import evaluate_limit_dip_adverse_fill
 
 PAPER_NOTICE_TEXT = (
     "Results over this few trades are mostly luck. A strategy needs well over "
@@ -796,6 +802,26 @@ def grade_signals(
             if next_open is None or next_open <= 0.0:
                 # None open -> leave pending
                 continue
+
+            # Adverse selection & limit fill check via shared_core.microstructure:
+            limit_dip_px = _safe_float_or_none(sig.get("limit_dip_price") or sig.get("limit_dip_entry_price"))
+            if limit_dip_px is not None and limit_dip_px > 0.0:
+                first_low = _safe_float_or_none(first_bar.get("low")) or 0.0
+                first_high = _safe_float_or_none(first_bar.get("high")) or first_low
+                first_vol = _safe_float_or_none(first_bar.get("volume")) or 1000.0
+                atr_est = _safe_float_or_none(sig.get("atr") or sig.get("atr_14")) or max(first_high - first_low, limit_dip_px * 0.02)
+                fill_eval = evaluate_limit_dip_adverse_fill(
+                    limit_dip_price=limit_dip_px,
+                    bar_low=first_low,
+                    bar_high=first_high,
+                    bar_open=next_open,
+                    atr=atr_est,
+                    total_bar_volume=first_vol,
+                    penetration_atr_multiplier=0.25,
+                )
+                if not fill_eval["filled"]:
+                    continue
+                next_open = float(fill_eval["fill_price"] or limit_dip_px)
 
             entry_bar_date = str(first_bar.get("bar_date") or "")[:10]
             # Rescale target and stop prices by entry/signal-price ratio ONLY if the signal stored a signal-time price

@@ -11,20 +11,23 @@ Tables:
   - user_settings (Persistent Account Balance ZAR & View Mode preferences)
 """
 import os
+import sys
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from config import DB_PATH, DEFAULT_FEE_PROFILE, DEFAULT_ROUND_TRIP_FEE_PCT, round_crypto_price
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.oms_engine import get_wal_sqlite_connection
 
 
 SEED_DEMO_DATA = False  # V13 SEED PATCH: demo trade/wallet seeding is OFF. Do not set to True.
 
 
 def get_conn() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_wal_sqlite_connection(DB_PATH)
 
 
 # Preserve V9.0 function aliases
@@ -327,6 +330,43 @@ def init_db() -> None:
         value TEXT NOT NULL
     )
     """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bot_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        enabled INTEGER NOT NULL DEFAULT 1,
+        mode TEXT NOT NULL DEFAULT 'PAPER',
+        max_active_positions INTEGER NOT NULL DEFAULT 3,
+        min_kelly_fraction_pct REAL NOT NULL DEFAULT 8.0,
+        eta_learning_rate REAL NOT NULL DEFAULT 0.08,
+        polling_interval_sec INTEGER NOT NULL DEFAULT 15,
+        auto_manage_coach INTEGER NOT NULL DEFAULT 1,
+        broker_profile TEXT NOT NULL DEFAULT 'BINANCE_BYBIT_VIP',
+        last_run_timestamp TEXT,
+        updated_at TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bot_audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        symbol TEXT,
+        trade_id INTEGER,
+        details_json TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("SELECT COUNT(*) AS c FROM bot_settings")
+    if cur.fetchone()["c"] == 0:
+        cur.execute("""
+            INSERT INTO bot_settings (
+                id, enabled, mode, max_active_positions, min_kelly_fraction_pct,
+                eta_learning_rate, polling_interval_sec, auto_manage_coach, broker_profile,
+                last_run_timestamp, updated_at
+            ) VALUES (1, 1, 'PAPER', 3, 8.0, 0.08, 15, 1, 'BINANCE_BYBIT_VIP', NULL, ?)
+        """, (now_iso if 'now_iso' in locals() else datetime.now(timezone.utc).isoformat(),))
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -869,4 +909,199 @@ def get_trading_memory_log() -> Any:
     from shared_core import TradingMemoryLog
     memory_db = os.path.join(DB_DIR, "trading_memory.db")
     return TradingMemoryLog(db_path=memory_db)
+
+
+def fetch_bot_settings() -> Dict[str, Any]:
+    """Fetch current autonomous trading bot configuration."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM bot_settings WHERE id = 1").fetchone()
+    except sqlite3.OperationalError:
+        conn.close()
+        init_db()
+        conn = get_conn()
+        row = conn.execute("SELECT * FROM bot_settings WHERE id = 1").fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    return {
+        "id": 1,
+        "enabled": 1,
+        "mode": "PAPER",
+        "max_active_positions": 3,
+        "min_kelly_fraction_pct": 8.0,
+        "eta_learning_rate": 0.08,
+        "polling_interval_sec": 15,
+        "auto_manage_coach": 1,
+        "broker_profile": "BINANCE_BYBIT_VIP",
+        "last_run_timestamp": None,
+        "updated_at": now_iso,
+    }
+
+
+def save_bot_settings(
+    enabled: Optional[bool] = None,
+    mode: Optional[str] = None,
+    max_active_positions: Optional[int] = None,
+    min_kelly_fraction_pct: Optional[float] = None,
+    eta_learning_rate: Optional[float] = None,
+    polling_interval_sec: Optional[int] = None,
+    auto_manage_coach: Optional[bool] = None,
+    broker_profile: Optional[str] = None,
+    last_run_timestamp: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Update autonomous trading bot configuration."""
+    current = fetch_bot_settings()
+    new_enabled = int(enabled) if enabled is not None else current["enabled"]
+    new_mode = mode.upper().strip() if mode is not None else current["mode"]
+    new_max_pos = int(max_active_positions) if max_active_positions is not None else current["max_active_positions"]
+    new_kelly = float(min_kelly_fraction_pct) if min_kelly_fraction_pct is not None else current["min_kelly_fraction_pct"]
+    new_eta = float(eta_learning_rate) if eta_learning_rate is not None else current["eta_learning_rate"]
+    new_interval = int(polling_interval_sec) if polling_interval_sec is not None else current["polling_interval_sec"]
+    new_coach = int(auto_manage_coach) if auto_manage_coach is not None else current["auto_manage_coach"]
+    new_profile = broker_profile.strip() if broker_profile is not None else current["broker_profile"]
+    new_last_run = last_run_timestamp if last_run_timestamp is not None else current.get("last_run_timestamp")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO bot_settings (
+            id, enabled, mode, max_active_positions, min_kelly_fraction_pct,
+            eta_learning_rate, polling_interval_sec, auto_manage_coach, broker_profile,
+            last_run_timestamp, updated_at
+        ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            enabled = excluded.enabled,
+            mode = excluded.mode,
+            max_active_positions = excluded.max_active_positions,
+            min_kelly_fraction_pct = excluded.min_kelly_fraction_pct,
+            eta_learning_rate = excluded.eta_learning_rate,
+            polling_interval_sec = excluded.polling_interval_sec,
+            auto_manage_coach = excluded.auto_manage_coach,
+            broker_profile = excluded.broker_profile,
+            last_run_timestamp = excluded.last_run_timestamp,
+            updated_at = excluded.updated_at
+    """, (
+        new_enabled, new_mode, new_max_pos, new_kelly,
+        new_eta, new_interval, new_coach, new_profile,
+        new_last_run, now_iso
+    ))
+    conn.commit()
+    conn.close()
+    return fetch_bot_settings()
+
+
+def insert_bot_audit_event(
+    action_type: str,
+    symbol: Optional[str] = None,
+    trade_id: Optional[int] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Record an action into the bot audit log."""
+    import json
+    now_iso = datetime.now(timezone.utc).isoformat()
+    det_json = json.dumps(details or {}, default=str)
+    conn = get_conn()
+    try:
+        conn.execute("""
+            INSERT INTO bot_audit_log (timestamp, action_type, symbol, trade_id, details_json)
+            VALUES (?, ?, ?, ?, ?)
+        """, (now_iso, action_type, symbol, trade_id, det_json))
+        conn.commit()
+    except sqlite3.OperationalError:
+        conn.close()
+        init_db()
+        conn = get_conn()
+        conn.execute("""
+            INSERT INTO bot_audit_log (timestamp, action_type, symbol, trade_id, details_json)
+            VALUES (?, ?, ?, ?, ?)
+        """, (now_iso, action_type, symbol, trade_id, det_json))
+        conn.commit()
+    conn.close()
+
+
+def fetch_bot_audit_logs(limit: int = 50) -> List[Dict[str, Any]]:
+    """Retrieve recent bot actions and learning events."""
+    import json
+    conn = get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT * FROM bot_audit_log ORDER BY id DESC LIMIT ?
+        """, (limit,)).fetchall()
+    except sqlite3.OperationalError:
+        conn.close()
+        init_db()
+        conn = get_conn()
+        rows = conn.execute("""
+            SELECT * FROM bot_audit_log ORDER BY id DESC LIMIT ?
+        """, (limit,)).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["details"] = json.loads(d.get("details_json") or "{}")
+        except Exception:
+            d["details"] = {}
+        result.append(d)
+    return result
+
+
+def update_agent_weights(
+    weights: Dict[str, float],
+    brier_scores: Optional[Dict[str, float]] = None,
+) -> None:
+    """Update learned specialist agent weights and calibration scores in SQLite."""
+    conn = get_conn()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for aid, w in weights.items():
+        brier = (brier_scores or {}).get(aid)
+        if brier is not None:
+            conn.execute("""
+                UPDATE agent_weights
+                SET weight = ?, brier_score = (brier_score * 0.8) + (? * 0.2), samples = samples + 1, updated_at = ?
+                WHERE agent_id = ?
+            """, (float(w), float(brier), now_iso, aid))
+        else:
+            conn.execute("""
+                UPDATE agent_weights
+                SET weight = ?, samples = samples + 1, updated_at = ?
+                WHERE agent_id = ?
+            """, (float(w), now_iso, aid))
+    conn.commit()
+    conn.close()
+
+
+def update_trade_mark_price(
+    trade_id: int,
+    current_price: float,
+    new_stop_loss: Optional[float] = None,
+    new_stage: Optional[int] = None,
+) -> None:
+    """Update live price, trailing stop loss, and coach stage for an active trade."""
+    conn = get_conn()
+    cur = conn.cursor()
+    row = cur.execute("SELECT highest_price_seen, stop_loss FROM trades WHERE id = ?", (trade_id,)).fetchone()
+    if row:
+        curr_p = round_crypto_price(current_price)
+        highest = max(float(row["highest_price_seen"] or curr_p), curr_p)
+        stop = float(row["stop_loss"])
+        if new_stop_loss is not None:
+            stop = max(stop, round_crypto_price(new_stop_loss))
+        if new_stage is not None:
+            cur.execute("""
+                UPDATE trades
+                SET current_price = ?, highest_price_seen = ?, stop_loss = ?, current_stage = ?
+                WHERE id = ?
+            """, (curr_p, highest, stop, new_stage, trade_id))
+        else:
+            cur.execute("""
+                UPDATE trades
+                SET current_price = ?, highest_price_seen = ?, stop_loss = ?
+                WHERE id = ?
+            """, (curr_p, highest, stop, trade_id))
+        conn.commit()
+    conn.close()
+
 
