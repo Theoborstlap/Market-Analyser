@@ -10,19 +10,24 @@ Tables:
   - alert_settings (Telegram Bot Token, Chat ID, Webhook, Pre-Open Briefing state)
   - user_settings (Persistent Account Balance ZAR & View Mode preferences)
 """
+import os
+import sys
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from config import DB_PATH, DEFAULT_FEE_PROFILE, DEFAULT_ROUND_TRIP_FEE_PCT
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.oms_engine import get_wal_sqlite_connection
 
 
 SEED_DEMO_DATA = False  # V13 SEED PATCH: demo trade/wallet seeding is OFF. Do not set to True.
 
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_wal_sqlite_connection(DB_PATH)
 
 
 def init_db() -> None:

@@ -33,6 +33,13 @@ from config import US_UNIVERSE_MAP
 from app.services.options_gex_skew_service import compute_options_gex_and_skew
 from app.services.finviz_sec_service import fetch_sec_finviz_wsb_intel
 from app.services.forexfactory_macro_service import get_wall_street_session_banner
+import os
+import sys
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.oms_engine import fetch_live_us_alpaca_quote_and_bars, is_live_trading_enabled, _QUOTE_CACHE
 
 try:
     import yfinance as yf
@@ -58,6 +65,8 @@ _PREFETCH_LOCK = threading.Lock()
 _USDZAR_CACHE: Dict[str, Any] = {"ts": 0.0, "data": None}
 _USDZAR_LAST_GOOD: Dict[str, Any] = {"rates": None, "ts": 0.0}
 _MACRO_CACHE: Dict[str, Any] = {"ts": 0.0, "data": None}
+_MTF_CACHE: Dict[str, Dict[str, Any]] = {}
+_MTF_TTL_SEC = 900.0
 
 _EARN_CACHE: Dict[str, Dict[str, Any]] = {}
 _EARN_INFLIGHT: set = set()
@@ -78,7 +87,14 @@ def _fetch_chart_with_meta(
     timeout_sec: float = 4.5,
     attempts: int = 2,
 ) -> Optional[Tuple[Dict[str, np.ndarray], Dict[str, Any]]]:
-    """Yahoo v8 chart fetch. Returns (series, meta) or None. Records a reason string on failure."""
+    """Primary: Alpaca SIP real-time quote/bars when keys present. Fallback: Yahoo v8 chart when LIVE_TRADING=false."""
+    limit_bars = 1500 if "y" in range_str else 120
+    alpaca_live = fetch_live_us_alpaca_quote_and_bars(symbol, limit=limit_bars, timeout_sec=timeout_sec)
+    if alpaca_live is not None:
+        return alpaca_live
+    if is_live_trading_enabled() and not (symbol.startswith("^") or "=" in symbol or "-" in symbol):
+        _FETCH_REASON[symbol] = "LIVE_TRADING_REQUIRES_ALPACA_REALTIME_FEED"
+        return None
     encoded = urllib.parse.quote(symbol)
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}"
@@ -227,14 +243,50 @@ def _evaluate_series(series: Dict[str, np.ndarray], last_bar_ts: Optional[float]
     return "LIVE", "", last_date
 
 
+def _fetch_intraday_closes(symbol: str, interval: str = "15m", range_str: str = "5d", timeout_sec: float = 3.0) -> Optional[np.ndarray]:
+    now = time.time()
+    cache_key = f"{symbol}:{interval}"
+    cached = _MTF_CACHE.get(cache_key)
+    if cached and (now - cached["ts"]) < _MTF_TTL_SEC:
+        return cached["closes"]
+    encoded = urllib.parse.quote(symbol)
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range={range_str}&interval={interval}&includePrePost=false"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout_sec, context=_SSL_CTX) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        result = (payload.get("chart", {}).get("result") or [None])[0]
+        if not result:
+            return None
+        closes_raw = ((result.get("indicators", {}).get("quote") or [{}])[0]).get("close") or []
+        c_arr = np.array([float(c) for c in closes_raw if c is not None and c > 0], dtype=float)
+        if len(c_arr) >= 20:
+            _MTF_CACHE[cache_key] = {"ts": now, "closes": c_arr}
+            return c_arr
+    except Exception:
+        pass
+    return cached["closes"] if cached else None
+
+
 def _copy_series(series: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    return {
+    out = {
         "opens": series["opens"].copy(),
         "highs": series["highs"].copy(),
         "lows": series["lows"].copy(),
         "closes": series["closes"].copy(),
         "volumes": series["volumes"].copy(),
     }
+    if "closes_15m" in series and series["closes_15m"] is not None:
+        out["closes_15m"] = series["closes_15m"].copy()
+    if "closes_1h" in series and series["closes_1h"] is not None:
+        out["closes_1h"] = series["closes_1h"].copy()
+    return out
 
 
 def _refresh_symbol(clean: str) -> Optional[Dict[str, np.ndarray]]:
@@ -250,6 +302,12 @@ def _refresh_symbol(clean: str) -> Optional[Dict[str, np.ndarray]]:
         status, reason, last_date = _evaluate_series(series, meta.get("last_bar_ts"))
         _record_status(clean, status, reason, last_date, int(len(series["closes"])), False)
         if status == "LIVE":
+            c15 = _fetch_intraday_closes(clean, interval="15m", range_str="5d")
+            c1h = _fetch_intraday_closes(clean, interval="60m", range_str="1mo")
+            if c15 is not None:
+                series["closes_15m"] = c15
+            if c1h is not None:
+                series["closes_1h"] = c1h
             _SERIES_CACHE[clean] = {"ts": now, "series": series}
             _LAST_GOOD[clean] = {"ts": now, "series": series, "last_bar_ts": meta.get("last_bar_ts")}
             _FAIL_TS.pop(clean, None)
@@ -708,6 +766,119 @@ def validate_and_inspect_us_ticker(symbol: str) -> Dict[str, Any]:
     }
 
 
+# ===========================================================================
+# Real-Time WebSocket SIP Handlers: Alpaca Market Data & Polygon.io
+# ===========================================================================
+async def start_alpaca_sip_websocket_stream(
+    symbols: Optional[List[str]] = None,
+    api_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    stop_event: Optional[asyncio.Event] = None,
+) -> None:
+    """
+    Connects to Alpaca SIP real-time streaming WebSocket (wss://stream.data.alpaca.markets/v2/sip).
+    Subscribes to quotes and bars, updating _QUOTE_CACHE and _STATUS in real time.
+    """
+    key = (api_key or os.environ.get("ALPACA_API_KEY") or os.environ.get("APCA_API_KEY_ID") or "").strip()
+    sec = (secret_key or os.environ.get("ALPACA_SECRET_KEY") or os.environ.get("APCA_API_SECRET_KEY") or "").strip()
+    if not key or not sec:
+        return
+    sym_list = symbols or list(US_UNIVERSE_MAP.keys())[:15]
+    try:
+        import websockets  # type: ignore
+
+        ws_url = "wss://stream.data.alpaca.markets/v2/sip"
+        async with websockets.connect(ws_url) as ws:
+            await ws.recv()
+            auth_msg = {"action": "auth", "key": key, "secret": sec}
+            await ws.send(json.dumps(auth_msg))
+            await ws.recv()
+            sub_msg = {"action": "subscribe", "quotes": sym_list, "bars": sym_list}
+            await ws.send(json.dumps(sub_msg))
+            while stop_event is None or not stop_event.is_set():
+                raw = await ws.recv()
+                records = json.loads(raw)
+                for rec in records:
+                    t = rec.get("T")
+                    s = str(rec.get("S", "")).upper()
+                    if t == "q" and s:
+                        bp = float(rec.get("bp") or 0.0)
+                        ap = float(rec.get("ap") or 0.0)
+                        mid = (bp + ap) / 2.0 if (bp > 0 and ap > 0) else 0.0
+                        spread_pct = ((ap - bp) / mid) * 100.0 if mid > 0 else 0.04
+                        cached = _QUOTE_CACHE.get(f"US:{s}", {})
+                        cached.update({
+                            "bid": bp,
+                            "ask": ap,
+                            "regularMarketPrice": mid or cached.get("regularMarketPrice", 0.0),
+                            "spread_pct": round(spread_pct, 4),
+                            "timestamp": time.time(),
+                            "source": "ALPACA_SIP_WS",
+                        })
+                        _QUOTE_CACHE[f"US:{s}"] = cached
+                    elif t == "b" and s:
+                        c = float(rec.get("c") or 0.0)
+                        if c > 0:
+                            cached = _QUOTE_CACHE.get(f"US:{s}", {})
+                            cached.update({"regularMarketPrice": c, "timestamp": time.time(), "source": "ALPACA_SIP_WS"})
+                            _QUOTE_CACHE[f"US:{s}"] = cached
+    except Exception:
+        pass
+
+
+async def start_polygon_sip_websocket_stream(
+    symbols: Optional[List[str]] = None,
+    api_key: Optional[str] = None,
+    stop_event: Optional[asyncio.Event] = None,
+) -> None:
+    """
+    Connects to Polygon.io real-time stock cluster WebSocket (wss://socket.polygon.io/stocks).
+    Subscribes to Level 1 / Level 2 quotes & aggregates.
+    """
+    key = (api_key or os.environ.get("POLYGON_API_KEY") or "").strip()
+    if not key:
+        return
+    sym_list = symbols or list(US_UNIVERSE_MAP.keys())[:15]
+    try:
+        import websockets  # type: ignore
+
+        async with websockets.connect("wss://socket.polygon.io/stocks") as ws:
+            await ws.recv()
+            await ws.send(json.dumps({"action": "auth", "params": key}))
+            await ws.recv()
+            params = ",".join([f"Q.{s}" for s in sym_list] + [f"A.{s}" for s in sym_list])
+            await ws.send(json.dumps({"action": "subscribe", "params": params}))
+            while stop_event is None or not stop_event.is_set():
+                raw = await ws.recv()
+                items = json.loads(raw)
+                for it in items:
+                    ev = it.get("ev")
+                    sym = str(it.get("sym", "")).upper()
+                    if ev == "Q" and sym:
+                        bp = float(it.get("bp") or 0.0)
+                        ap = float(it.get("ap") or 0.0)
+                        mid = (bp + ap) / 2.0 if (bp > 0 and ap > 0) else 0.0
+                        spread_pct = ((ap - bp) / mid) * 100.0 if mid > 0 else 0.04
+                        cached = _QUOTE_CACHE.get(f"US:{sym}", {})
+                        cached.update({
+                            "bid": bp,
+                            "ask": ap,
+                            "regularMarketPrice": mid or cached.get("regularMarketPrice", 0.0),
+                            "spread_pct": round(spread_pct, 4),
+                            "timestamp": time.time(),
+                            "source": "POLYGON_SIP_WS",
+                        })
+                        _QUOTE_CACHE[f"US:{sym}"] = cached
+                    elif ev == "A" and sym:
+                        c = float(it.get("c") or 0.0)
+                        if c > 0:
+                            cached = _QUOTE_CACHE.get(f"US:{sym}", {})
+                            cached.update({"regularMarketPrice": c, "timestamp": time.time(), "source": "POLYGON_SIP_WS"})
+                            _QUOTE_CACHE[f"US:{sym}"] = cached
+    except Exception:
+        pass
+
+
 __all__ = [
     "get_symbol_6y_history",
     "get_symbol_status",
@@ -720,4 +891,6 @@ __all__ = [
     "fetch_sec_finviz_wsb_intel",
     "fetch_us_macro_and_forexfactory_shield",
     "get_wall_street_session_banner",
+    "start_alpaca_sip_websocket_stream",
+    "start_polygon_sip_websocket_stream",
 ]

@@ -478,7 +478,7 @@ def compute_quant_metrics_for_jse_asset(
     ou_half_life = round(max(2.4, min(11.6, math.log(2.0) / ou_theta)), 1)
     ou_mu_zar = round(mean60 * 1.018, 2)
 
-    # 4. Multi-Timeframe (4H + 1D + 1W) Fractal Confluence
+    # 4. Multi-Timeframe (True 15m + 1H + 1D OHLCV Bars) Fractal Confluence
     ema20 = float(np.mean(closes[-20:]))
     ema50 = float(np.mean(closes[-50:])) if len(closes) >= 50 else ema20
     is_flagship_12_12 = ticker in ("GFI.JO", "SHP.JO", "NPN.JO", "STXNDQ.JO")
@@ -486,13 +486,17 @@ def compute_quant_metrics_for_jse_asset(
     is_watchtower_candidate = ticker in ("SYG500.JO", "CPI.JO", "ANG.JO")
     is_elite_group = is_flagship_12_12 or is_armed_trap_candidate or is_watchtower_candidate
 
-    tf_1d_bullish = bool(price_zar >= avwap_swing_low_60d_zar * 0.99 or ou_zscore <= -0.10 or price_zar >= ema20 * 0.995)
-    tf_4h_bullish = bool(change_5d_pct >= -0.4 or price_zar >= val_zar)
-    tf_1w_bullish = bool(is_elite_group or (seed % 5 == 0))
-    if is_elite_group:
-        tf_1d_bullish = True
-        tf_4h_bullish = True
-        tf_1w_bullish = True
+    c15 = df.attrs.get("closes_15m") if hasattr(df, "attrs") else None
+    c1h = df.attrs.get("closes_1h") if hasattr(df, "attrs") else None
+    if c15 is not None and len(c15) >= 20:
+        tf_4h_bullish = bool(float(c15[-1]) >= float(np.mean(c15[-10:])) and float(np.mean(c15[-10:])) >= float(np.mean(c15[-20:])))
+    else:
+        tf_4h_bullish = bool(change_5d_pct >= 0.0 and price_zar >= val_zar)
+    if c1h is not None and len(c1h) >= 20:
+        tf_1w_bullish = bool(float(c1h[-1]) >= float(np.mean(c1h[-10:])) and float(np.mean(c1h[-10:])) >= float(np.mean(c1h[-20:])))
+    else:
+        tf_1w_bullish = bool(price_zar >= ema50 and ema20 >= ema50)
+    tf_1d_bullish = bool(price_zar >= ema20 and ema20 >= ema50)
 
     mtf_alignment_score = (1 if tf_1d_bullish else 0) + (1 if tf_4h_bullish else 0) + (1 if tf_1w_bullish else 0)
     mtf_status_badge = (
@@ -722,18 +726,15 @@ def compute_quant_metrics_for_jse_asset(
     )
     risk_per_share_dip = max(0.02, limit_dip_entry_price - hybrid_structural_stop)
     reward_net_per_share_dip = max(0.02, (target_price_zar - limit_dip_entry_price) - limit_dip_entry_price * f_dec)
-    net_rr_limit_dip = round(max(2.02, reward_net_per_share_dip / risk_per_share_dip), 2)
+    net_rr_limit_dip = round(reward_net_per_share_dip / max(risk_per_share_dip, 1e-6), 2)
 
     # 24-Hour Limit Dip Fill Probability (`limit_fill_prob_24h_pct`) via Brownian Motion Reflection Principle
+    # Penalized by order flow toxicity / volatility intensity
     log_dist = abs(math.log(max(0.01, entry_price) / max(0.01, limit_dip_entry_price)))
     raw_fill_prob = float(100.0 * 2.0 * norm.cdf(-log_dist / max(0.005, yz_daily_vol)))
-    if ticker in ("NPN.JO", "GFI.JO"):
-        # Strong institutional breakout velocity -> lower 24h pullback fill prob (< 52%) -> favors Plan A Market Now
-        limit_fill_prob_24h_pct = round(min(48.5, max(28.0, raw_fill_prob * 0.68)), 1)
-    elif is_armed_trap_candidate:
-        limit_fill_prob_24h_pct = round(max(64.0, min(88.0, raw_fill_prob)), 1)
-    else:
-        limit_fill_prob_24h_pct = round(min(94.0, max(46.0, raw_fill_prob)), 1)
+    vol_intensity_pen = min(0.35, max(0.0, (yz_daily_vol - 0.015) * 6.0))
+    adverse_selection_mult = max(0.25, 1.0 - 0.45 * vpin_toxicity - vol_intensity_pen)
+    limit_fill_prob_24h_pct = round(min(99.0, max(5.0, raw_fill_prob * adverse_selection_mult)), 1)
     limit_fill_prob_pct = limit_fill_prob_24h_pct
 
     # Plan C (50/50 Institutional Scale-In): 50% Market Now (Plan A) + 50% Limit Dip (Plan B)

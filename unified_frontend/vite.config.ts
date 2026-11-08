@@ -46,6 +46,14 @@ export default defineConfig({
         ws: true,
         rewrite: (p) => p.replace(/^\/engine\/crypto/, ""),
       },
+      "/api/bus": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+      "/ws/stream": {
+        target: "ws://127.0.0.1:8000",
+        ws: true,
+      },
     },
   },
 });

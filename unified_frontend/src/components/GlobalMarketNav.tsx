@@ -1,5 +1,7 @@
 import React from "react";
-import { Activity, Cpu, Globe, Radio, Wifi, WifiOff } from "lucide-react";
+import { Activity, AlertOctagon, ChevronDown, ChevronUp, Cpu, Globe, Radio, Sliders, Wifi, WifiOff } from "lucide-react";
+import { formatZar } from "../utils/formatters";
+import { terminalStore, useTerminalStore } from "../store/terminalStore";
 
 export type MarketId = "jse" | "us" | "crypto";
 
@@ -16,52 +18,43 @@ export interface GlobalMarketNavProps {
   healthMap: Record<MarketId, EngineHealthState>;
   activeWsConnected: boolean;
   lastWsTick: string | null;
+  hudDrawerOpen: boolean;
+  onToggleHudDrawer: () => void;
 }
 
 interface MarketMeta {
   id: MarketId;
   flag: string;
-  shortLabel: string;
-  subtitle: string;
+  label: string;
+  cleanPill: string;
   port: number;
   shortcut: string;
-  accentActive: string;
-  dotColor: string;
 }
 
 const MARKET_ITEMS: MarketMeta[] = [
   {
     id: "jse",
     flag: "🇿🇦",
-    shortLabel: "JSE Johannesburg",
-    subtitle: "SA Equities & ETFs",
+    label: "JSE",
+    cleanPill: "JSE · Equities",
     port: 8000,
     shortcut: "Alt+1",
-    accentActive:
-      "bg-indigo-600/90 border-indigo-400 text-white shadow-lg shadow-indigo-950/60",
-    dotColor: "bg-indigo-400",
   },
   {
     id: "us",
     flag: "🇺🇸",
-    shortLabel: "US Wall Street",
-    subtitle: "NYSE / NASDAQ",
+    label: "US",
+    cleanPill: "US · Wall St",
     port: 8001,
     shortcut: "Alt+2",
-    accentActive:
-      "bg-cyan-600/90 border-cyan-400 text-white shadow-lg shadow-cyan-950/60",
-    dotColor: "bg-cyan-400",
   },
   {
     id: "crypto",
     flag: "⚡",
-    shortLabel: "Crypto 24/7 Spot",
-    subtitle: "1x Spot Singularity",
+    label: "Crypto",
+    cleanPill: "Crypto · Spot 1x",
     port: 8002,
     shortcut: "Alt+3",
-    accentActive:
-      "bg-emerald-600/90 border-emerald-400 text-white shadow-lg shadow-emerald-950/60",
-    dotColor: "bg-emerald-400",
   },
 ];
 
@@ -71,12 +64,18 @@ export const GlobalMarketNav: React.FC<GlobalMarketNavProps> = ({
   healthMap,
   activeWsConnected,
   lastWsTick,
+  hudDrawerOpen,
+  onToggleHudDrawer,
 }) => {
   const onlineCount = (Object.values(healthMap) as EngineHealthState[]).filter(
     (h) => h.online
   ).length;
   const activeMeta =
     MARKET_ITEMS.find((m) => m.id === activeMarket) || MARKET_ITEMS[0];
+
+  const portfolioCapitalZar = useTerminalStore((s) => s.portfolioCapitalZar);
+  const freeCashZar = useTerminalStore((s) => s.freeCashZar);
+  const realizedPnlZar = useTerminalStore((s) => s.realizedPnlZar);
 
   const formattedTick = lastWsTick
     ? (() => {
@@ -94,136 +93,155 @@ export const GlobalMarketNav: React.FC<GlobalMarketNavProps> = ({
 
   return (
     <nav
-      aria-label="Global Market Switcher"
-      className="relative shrink-0 z-[60] bg-[#04070E] border-b border-slate-800/90 px-4 py-2 shadow-xl"
+      aria-label="48px Command Header"
+      className="h-12 shrink-0 z-[60] bg-[#04070E] border-b border-white/10 px-3 sm:px-4 flex items-center justify-between shadow-xl"
     >
-      <div className="max-w-[1680px] mx-auto flex flex-wrap items-center justify-between gap-3">
-        {/* Left: Sovereign Omni-Market Identity */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 via-cyan-500 to-emerald-500 flex items-center justify-center shadow-md shrink-0">
-            <Globe className="w-4 h-4 text-slate-950 stroke-[2.5]" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-extrabold tracking-wider text-white uppercase">
-                Sovereign Omni-Market Terminal
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30 text-[10px] font-mono font-bold text-cyan-300">
-                UNIFIED V13.0
-              </span>
-            </div>
-            <div className="text-[10px] font-mono text-slate-400 hidden sm:block">
-              Persistent Multi-Engine Command • Zero-Interruption Background Daemons
-            </div>
-          </div>
+      {/* Left: Sovereign Identity & Clean Market Status Pill */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="w-6 h-6 rounded bg-gradient-to-br from-indigo-500 via-cyan-500 to-emerald-500 flex items-center justify-center shrink-0">
+          <Globe className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-black tracking-wider text-white uppercase hidden md:inline">
+            SOVEREIGN
+          </span>
+          <span className="px-1 py-0.2 rounded bg-white/5 border border-white/10 text-[9px] font-mono font-bold text-slate-400">
+            V13.0
+          </span>
+          <span className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-white/10 text-[10px] font-mono font-bold text-slate-200">
+            [{activeMeta.cleanPill}]
+          </span>
+        </div>
+      </div>
 
-        {/* Center: Seamless 3-Market Switcher */}
-        <div
-          role="tablist"
-          aria-label="Select Trading Market"
-          className="flex items-center gap-1.5 bg-slate-950/95 p-1 rounded-xl border border-slate-800"
-        >
-          {MARKET_ITEMS.map((item) => {
-            const isSelected = activeMarket === item.id;
-            const health = healthMap[item.id];
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={isSelected}
-                data-testid={`market-switch-${item.id}`}
-                onClick={() => onSelectMarket(item.id)}
-                title={`Switch active terminal to ${item.shortLabel} (Port ${item.port}) [${item.shortcut}]`}
-                className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg border text-left transition-all ${
-                  isSelected
-                    ? item.accentActive
-                    : "bg-slate-900/70 border-transparent hover:border-slate-700 hover:bg-slate-900 text-slate-300"
+      {/* Center: Compact Market Switcher */}
+      <div
+        role="tablist"
+        aria-label="Select Trading Market"
+        className="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-lg border border-white/10"
+      >
+        {MARKET_ITEMS.map((item) => {
+          const isSelected = activeMarket === item.id;
+          const health = healthMap[item.id];
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={isSelected}
+              data-testid={`market-switch-${item.id}`}
+              onClick={() => onSelectMarket(item.id)}
+              title={`${item.label} (:${item.port}) [${item.shortcut}]`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition ${
+                isSelected
+                  ? "bg-slate-200 text-slate-950 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+              }`}
+            >
+              <span>{item.flag}</span>
+              <span className="font-mono">{item.label}</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  health?.online ? "bg-emerald-400" : "bg-rose-500"
                 }`}
-              >
-                <span className="text-sm leading-none">{item.flag}</span>
-                <div className="leading-tight">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-extrabold tracking-tight">
-                      {item.shortLabel}
-                    </span>
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        health?.online
-                          ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
-                          : "bg-rose-500"
-                      }`}
-                      title={
-                        health?.online
-                          ? `Engine :${item.port} ONLINE`
-                          : `Engine :${item.port} OFFLINE`
-                      }
-                    />
-                  </div>
-                  <div
-                    className={`text-[10px] font-mono ${
-                      isSelected ? "text-slate-100/90" : "text-slate-400"
-                    }`}
-                  >
-                    {item.subtitle} • :{item.port}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+              />
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Right: Active Routing & Background Engine Telemetry */}
-        <div className="flex items-center gap-2 font-mono text-[11px]">
-          <div
-            data-testid="active-engine-badge"
-            className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-300"
-          >
-            <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span>Active Feed:</span>
-            <strong className="text-white">
-              {activeMeta.shortLabel} (:{activeMeta.port})
-            </strong>
-          </div>
-
-          <div
-            data-testid="ws-status-badge"
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
-              activeWsConnected
-                ? "bg-emerald-950/60 border-emerald-500/40 text-emerald-300"
-                : "bg-amber-950/50 border-amber-500/40 text-amber-300"
+      {/* Right: Anchored Portfolio Capital, Telemetry Status & HUD Toggle */}
+      <div className="flex items-center gap-2 font-mono text-[11px] shrink-0">
+        {/* Single Source of Truth Portfolio Telemetry */}
+        <div
+          data-testid="anchored-portfolio-capital"
+          className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900/90 border border-white/10 text-slate-300"
+        >
+          <span className="text-slate-400">Portfolio:</span>
+          <strong className="text-white tabular-nums">
+            {formatZar(portfolioCapitalZar, { decimals: 0 })}
+          </strong>
+          <span className="text-slate-600">|</span>
+          <span className="text-slate-400">Cash:</span>
+          <strong className="text-emerald-400 tabular-nums">
+            {formatZar(freeCashZar, { decimals: 0 })}
+          </strong>
+          <span className="text-slate-600">|</span>
+          <span className="text-slate-400">PnL:</span>
+          <strong
+            className={`tabular-nums ${
+              realizedPnlZar >= 0 ? "text-emerald-400" : "text-rose-400"
             }`}
           >
-            {activeWsConnected ? (
-              <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <WifiOff className="w-3.5 h-3.5 text-amber-400" />
-            )}
-            <span className="font-bold">
-              {activeWsConnected ? "WS STREAM" : "WS SYNC"}
-            </span>
-            {formattedTick && (
-              <span className="text-[10px] text-emerald-200/80 hidden md:inline">
-                {formattedTick}
-              </span>
-            )}
-          </div>
-
-          <div
-            data-testid="engines-online-badge"
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
-              onlineCount === 3
-                ? "bg-slate-900/90 border-emerald-500/40 text-emerald-300"
-                : "bg-rose-950/60 border-rose-500/40 text-rose-300"
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5" />
-            <span className="font-bold">{onlineCount}/3 ENGINES</span>
-            <Activity className="w-3 h-3 opacity-80" />
-          </div>
+            {formatZar(realizedPnlZar)}
+          </strong>
         </div>
+
+        {/* WS Stream Indicator */}
+        <div
+          title={
+            activeWsConnected
+              ? `WS Stream Active ${formattedTick ? `@ ${formattedTick}` : ""}`
+              : "WS Connecting..."
+          }
+          className={`flex items-center gap-1 px-2 py-1 rounded border text-[10px] ${
+            activeWsConnected
+              ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
+              : "bg-amber-950/40 border-amber-500/30 text-amber-300"
+          }`}
+        >
+          {activeWsConnected ? (
+            <Wifi className="w-3 h-3 text-emerald-400" />
+          ) : (
+            <WifiOff className="w-3 h-3 text-amber-400" />
+          )}
+          <span className="font-bold hidden xl:inline">
+            {activeWsConnected ? "STREAM" : "SYNC"}
+          </span>
+        </div>
+
+        {/* Engines Online Pill */}
+        <div
+          title={`${onlineCount}/3 Background Engines Online`}
+          className="hidden sm:flex items-center gap-1 px-2 py-1 rounded bg-slate-900 border border-white/10 text-slate-300 text-[10px]"
+        >
+          <Cpu className="w-3 h-3 text-slate-400" />
+          <span>{onlineCount}/3</span>
+        </div>
+
+        {/* Collapsible Secondary HUD Drawer Toggle */}
+        <button
+          type="button"
+          onClick={onToggleHudDrawer}
+          className={`flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-bold transition ${
+            hudDrawerOpen
+              ? "bg-slate-800 text-white border-white/20"
+              : "bg-slate-900 text-slate-400 hover:text-white border-white/10"
+          }`}
+          title="Toggle Secondary Telemetry HUD Drawer (IPC, Risk, CVaR)"
+        >
+          <Sliders className="w-3 h-3" />
+          <span>HUD</span>
+          {hudDrawerOpen ? (
+            <ChevronUp className="w-3 h-3" />
+          ) : (
+            <ChevronDown className="w-3 h-3" />
+          )}
+        </button>
+
+        {/* Panic Flatten [Shift+Esc] */}
+        <button
+          type="button"
+          onClick={() => terminalStore.triggerEmergencyPanicFlatten()}
+          className="px-2 py-1 rounded bg-[#ef4444] text-white font-extrabold hover:brightness-110 flex items-center gap-1 text-[10px] shadow-sm"
+          title="Shift+Esc Emergency Cross-Market Panic Flatten"
+        >
+          <AlertOctagon className="w-3 h-3" />
+          <span className="hidden sm:inline">PANIC</span>
+        </button>
       </div>
     </nav>
   );
 };
+
+export default GlobalMarketNav;

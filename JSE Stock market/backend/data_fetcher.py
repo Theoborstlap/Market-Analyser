@@ -17,6 +17,12 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import sys
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.oms_engine import is_live_trading_enabled
 
 try:
     import certifi
@@ -52,6 +58,42 @@ CACHE_TTL_SEC = 1200  # 20-minute TTL
 
 _FETCH_REASON: Dict[str, str] = {}
 _LAST_GOOD: Dict[str, pd.DataFrame] = {}
+_MTF_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+def fetch_jse_intraday_closes(symbol: str, interval: str = "15m", range_str: str = "5d", timeout_sec: float = 3.0) -> Optional[np.ndarray]:
+    now = time.time()
+    key = f"{symbol}:{interval}"
+    cached = _MTF_CACHE.get(key)
+    if cached and (now - cached["ts"]) < CACHE_TTL_SEC:
+        return cached["closes"]
+    yf_sym = YAHOO_TICKER_ALIASES.get(symbol, symbol)
+    encoded = urllib.parse.quote(yf_sym)
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range={range_str}&interval={interval}&includePrePost=false"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout_sec, context=_SSL_CTX) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        result = (payload.get("chart", {}).get("result") or [None])[0]
+        if not result:
+            return None
+        meta = result.get("meta") or {}
+        ccy = str(meta.get("currency") or "ZAc")
+        div_factor = 100.0 if (ccy == "ZAc" or ccy.upper() == "ZAC" or symbol.endswith(".JO")) else 1.0
+        closes_raw = ((result.get("indicators", {}).get("quote") or [{}])[0]).get("close") or []
+        c_arr = np.array([round(float(c) / div_factor, 4) for c in closes_raw if c is not None and c > 0], dtype=float)
+        if len(c_arr) >= 20:
+            _MTF_CACHE[key] = {"ts": now, "closes": c_arr}
+            return c_arr
+    except Exception:
+        pass
+    return cached["closes"] if cached else None
 
 KNOWN_CUSTOM_JSE_PRICES: Dict[str, Dict[str, Any]] = {
     "CSP500.JO": {"name": "CoreShares S&P 500 ETF", "sector": "JSE_ETF_TFSA", "stt_exempt": True},
@@ -437,7 +479,24 @@ def fetch_yahoo_v8_chart_df(
     timeout_sec: float = 4.0,
     years: Optional[int] = None,
 ) -> Optional[pd.DataFrame]:
-    """Fast non-blocking Yahoo v8 chart fetcher using standard library urllib with certifi SSL and ZAc -> ZAR normalization."""
+    """Primary: JSE Live Broker Quote Feed when configured. Historical fallback: Yahoo v8 when LIVE_TRADING=false."""
+    jse_feed_url = os.environ.get("JSE_LIVE_QUOTE_FEED_URL", "").strip()
+    if jse_feed_url and symbol.endswith(".JO"):
+        try:
+            q_url = f"{jse_feed_url.rstrip('/')}/bars?symbol={urllib.parse.quote(symbol)}&range={range_str}"
+            req_l = urllib.request.Request(q_url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req_l, timeout=timeout_sec, context=_SSL_CTX) as resp:
+                l_rows = json.loads(resp.read().decode("utf-8")).get("bars") or []
+            if len(l_rows) >= 15:
+                df_l = pd.DataFrame(l_rows)
+                df_l["Date"] = pd.to_datetime(df_l["Date"])
+                return df_l.set_index("Date")
+        except Exception:
+            if is_live_trading_enabled():
+                return None
+    elif is_live_trading_enabled() and symbol.endswith(".JO"):
+        _FETCH_REASON[symbol] = "LIVE_TRADING_REQUIRES_JSE_LIVE_QUOTE_FEED_URL"
+        return None
     yf_sym = YAHOO_TICKER_ALIASES.get(symbol, symbol)
     encoded = urllib.parse.quote(yf_sym)
     if years is not None:
@@ -584,6 +643,12 @@ def fetch_yahoo_v8_chart_df(
         df.attrs["last_real_bar"] = last_iso_date
         df.attrs["fetched_at"] = datetime.now(SAST_ZONE).isoformat()
         df.attrs["already_normalized_zar"] = True
+        c15 = fetch_jse_intraday_closes(symbol, interval="15m", range_str="5d")
+        c1h = fetch_jse_intraday_closes(symbol, interval="60m", range_str="1mo")
+        if c15 is not None:
+            df.attrs["closes_15m"] = c15
+        if c1h is not None:
+            df.attrs["closes_1h"] = c1h
         _FETCH_REASON.pop(symbol, None)
         return df
     except Exception:

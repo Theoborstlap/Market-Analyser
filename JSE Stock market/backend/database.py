@@ -1,9 +1,15 @@
 """Idempotent SQLite Database Engine for jse-quant-coach-247 V12.0 ("The Sovereign Omega 12/12 Finale" — ./data/jse_quant_coach.db)."""
 
 import os
+import sys
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.oms_engine import get_wal_sqlite_connection
 
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DB_PATH = os.path.join(DB_DIR, "jse_quant_coach.db")
@@ -13,10 +19,7 @@ SEED_DEMO_DATA = False  # V13 SEED PATCH: demo trade/wallet seeding is OFF. Do n
 
 
 def get_connection() -> sqlite3.Connection:
-    os.makedirs(DB_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_wal_sqlite_connection(DB_PATH)
 
 
 def _ensure_column(cur: sqlite3.Cursor, table: str, col_name: str, col_def: str) -> None:

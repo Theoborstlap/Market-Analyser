@@ -2,7 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-obsidian-aaa: #04070d;
+  --fg-crisp-aaa: #f8fafc;
+  --accent-cyan-aaa: #00e5ff;
+  --accent-emerald-aaa: #00e676;
+  --accent-amber-aaa: #ffb300;
+  --accent-crimson-aaa: #ff2e54;
+}
+
 body {
-  background-color: #060911;
-  color: #f1f5f9;
+  background-color: var(--bg-obsidian-aaa);
+  color: var(--fg-crisp-aaa);
+  font-feature-settings: "tnum" on, "lnum" on;
+  -webkit-font-smoothing: antialiased;
 }

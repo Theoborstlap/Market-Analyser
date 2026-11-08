@@ -66,6 +66,7 @@ export const OpportunityScanner: React.FC<Props> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [customTickerInput, setCustomTickerInput] = useState("");
   const [expandedGatesMap, setExpandedGatesMap] = useState<Record<string, boolean>>({});
+  const [cardTabMap, setCardTabMap] = useState<Record<string, "EXECUTION" | "QUANT" | "THESIS">>({});
   const [selectedPlanMap, setSelectedPlanMap] = useState<
     Record<string, "PLAN_A_MARKET" | "PLAN_B_LIMIT_DIP" | "PLAN_C_50_50_SPLIT">
   >({});
@@ -220,14 +221,13 @@ export const OpportunityScanner: React.FC<Props> = ({
               </div>
               <div>
                 <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight flex items-center gap-2 flex-wrap">
-                  🏆 Today&apos;s #1 Crypto A+ Barbell Plan (1x Spot Only — Scaled to Your R
-                  {accountBalanceZar.toLocaleString()} / ~${accountUsdt.toFixed(0)} USDT Account)
+                  🏆 Today&apos;s #1 Crypto A+ Barbell Plan
                   <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                     60d Pair Correlation ρ = {barbellPlan.pair_correlation_rho.toFixed(2)}
                   </span>
                 </h2>
-                <p className="text-xs text-slate-300">
-                  Institutional Uncorrelated 1x Spot Barbell (Zero Leverage): 45% Major L1 Anchor + 35% High-Velocity AI/DeFi Leader + 20% USDT Dry Powder Reserve
+                <p className="text-xs text-slate-400">
+                  Institutional Risk Parity: 45% Major L1 Anchor · 35% Tactical Leader · 20% Dry Powder Reserve
                 </p>
               </div>
             </div>
@@ -429,8 +429,8 @@ export const OpportunityScanner: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Signal Cards Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      {/* Signal Cards Grid (Responsive auto-fit Upgrade 11) */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(360px,1fr))] gap-4">
         {filtered.map((sig) => {
           // Dynamically scale card money box to live accountBalanceZar & usdzarRate
           const allocPct =
@@ -503,7 +503,7 @@ export const OpportunityScanner: React.FC<Props> = ({
           return (
             <div
               key={sig.symbol}
-              className="bg-slate-900/95 border border-slate-800 hover:border-slate-700 rounded-xl overflow-hidden transition flex flex-col justify-between shadow-lg"
+              className="bg-slate-900/95 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition flex flex-col justify-between shadow-lg"
             >
               {/* UPGRADE 4 + V12.2: TRAFFIC-LIGHT VERDICT HEADER & TOP-3 TOURNAMENT BADGES */}
               <div
@@ -621,60 +621,113 @@ export const OpportunityScanner: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {/* UPGRADE 4: PLAIN-ENGLISH MONEY BOX (SCALED TO R10,000 / ~$540 USDT) */}
-                <div className="rounded-xl bg-slate-950/90 border border-emerald-500/30 p-3">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2 font-semibold">
-                    <span>
-                      💵 PLAIN-ENGLISH MONEY BOX (Scaled to R{accountBalanceZar.toLocaleString()} / ~${accountUsdt.toFixed(0)} USDT)
-                    </span>
-                    <span className="font-mono text-emerald-300">
-                      1x Spot Kelly: {allocPct.toFixed(1)}% ({coins.toFixed(4)} {sig.symbol})
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div className="bg-slate-900/90 p-2 rounded border border-slate-800">
-                      <div className="text-[10px] text-slate-400">Invest (1x Spot)</div>
-                      <div className="font-mono font-extrabold text-cyan-300">
-                        ${investUsd.toFixed(2)} USDT
-                      </div>
-                      <div className="text-[11px] font-mono text-slate-300">
-                        R {Math.round(investZar).toLocaleString()} ZAR
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/90 p-2 rounded border border-slate-800">
-                      <div className="text-[10px] text-slate-400">
-                        1x Spot Buy ({sig.recommended_plan === "PLAN_B" ? "Plan B Dip" : "Plan A/C"})
-                      </div>
-                      <div className="font-mono font-extrabold text-white">
-                        ${formatCryptoPrice(planActiveEntry)}
-                      </div>
-                      <div className="text-[10px] font-mono text-amber-300">
-                        Dip: ${formatCryptoPrice(sig.limit_dip_entry_price)} ({sig.limit_fill_prob_pct.toFixed(0)}% Fill)
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/90 p-2 rounded border border-rose-900/40">
-                      <div className="text-[10px] text-rose-300">Protected OCO Stop</div>
-                      <div className="font-mono font-extrabold text-rose-400">
-                        ${formatCryptoPrice(sig.stop_loss)}
-                      </div>
-                      <div className="text-[10px] font-mono text-rose-300">
-                        Max Loss: -${maxLossUsd.toFixed(2)} (-R{Math.round(maxLossZar)})
-                      </div>
-                    </div>
-
-                    <div className="bg-slate-900/90 p-2 rounded border border-emerald-900/40">
-                      <div className="text-[10px] text-emerald-300">Net Target (After 0.36%)</div>
-                      <div className="font-mono font-extrabold text-emerald-400">
-                        ${formatCryptoPrice(sig.target_price)}
-                      </div>
-                      <div className="text-[10px] font-mono text-emerald-300">
-                        Net Win: +${netWinUsd.toFixed(2)} (+R{Math.round(netWinZar)})
-                      </div>
-                    </div>
-                  </div>
+                {/* 3-Tab Card Architecture (Upgrade 4) */}
+                <div className="flex items-center gap-1 p-0.5 bg-slate-950 rounded-lg border border-white/10 mb-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCardTabMap((prev) => ({
+                        ...prev,
+                        [sig.symbol]: "EXECUTION",
+                      }))
+                    }
+                    className={`flex-1 py-1 px-2 rounded text-xs font-bold transition flex items-center justify-center gap-1 ${
+                      (cardTabMap[sig.symbol] || "EXECUTION") === "EXECUTION"
+                        ? "bg-slate-800 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    🎯 Execution &amp; Ladder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCardTabMap((prev) => ({
+                        ...prev,
+                        [sig.symbol]: "QUANT",
+                      }))
+                    }
+                    className={`flex-1 py-1 px-2 rounded text-xs font-bold transition flex items-center justify-center gap-1 ${
+                      (cardTabMap[sig.symbol] || "EXECUTION") === "QUANT"
+                        ? "bg-slate-800 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    📊 Quant Matrix
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCardTabMap((prev) => ({
+                        ...prev,
+                        [sig.symbol]: "THESIS",
+                      }))
+                    }
+                    className={`flex-1 py-1 px-2 rounded text-xs font-bold transition flex items-center justify-center gap-1 ${
+                      (cardTabMap[sig.symbol] || "EXECUTION") === "THESIS"
+                        ? "bg-slate-800 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    🏛️ Thesis &amp; 12-Gate
+                  </button>
                 </div>
+
+                {/* TAB 1: EXECUTION */}
+                {(cardTabMap[sig.symbol] || "EXECUTION") === "EXECUTION" && (
+                  <div className="space-y-2.5">
+                    {/* Execution Sizing Box */}
+                    <div className="rounded-xl bg-slate-950/90 border border-white/10 p-2.5">
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2 font-semibold">
+                        <span>💵 EXECUTION SIZING ({allocPct.toFixed(1)}% Kelly)</span>
+                        <span className="font-mono text-emerald-300">
+                          {coins.toFixed(4)} {sig.symbol}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div className="bg-slate-900/90 p-2 rounded border border-white/10">
+                          <div className="text-[10px] text-slate-400">Invest Amount</div>
+                          <div className="font-mono font-extrabold text-cyan-300">
+                            ${investUsd.toFixed(2)} USDT
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-300">
+                            R {Math.round(investZar).toLocaleString()} ZAR
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-2 rounded border border-white/10">
+                          <div className="text-[10px] text-slate-400">
+                            Buy Price ({sig.recommended_plan === "PLAN_B" ? "Plan B Dip" : "Plan A/C"})
+                          </div>
+                          <div className="font-mono font-extrabold text-white">
+                            ${formatCryptoPrice(planActiveEntry)}
+                          </div>
+                          <div className="text-[10px] font-mono text-amber-300">
+                            Dip: ${formatCryptoPrice(sig.limit_dip_entry_price)} ({sig.limit_fill_prob_pct.toFixed(0)}% Fill)
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-2 rounded border border-rose-900/40">
+                          <div className="text-[10px] text-rose-300">Protected OCO Stop</div>
+                          <div className="font-mono font-extrabold text-rose-400">
+                            ${formatCryptoPrice(sig.stop_loss)}
+                          </div>
+                          <div className="text-[10px] font-mono text-rose-300">
+                            Max Loss: -${maxLossUsd.toFixed(2)} (-R{Math.round(maxLossZar)})
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-900/90 p-2 rounded border border-emerald-900/40">
+                          <div className="text-[10px] text-emerald-300">Net Target (After Fee)</div>
+                          <div className="font-mono font-extrabold text-emerald-400">
+                            ${formatCryptoPrice(sig.target_price)}
+                          </div>
+                          <div className="text-[10px] font-mono text-emerald-300">
+                            Net Win: +${netWinUsd.toFixed(2)} (+R{Math.round(netWinZar)})
+                          </div>
+                        </div>
+                      </div>
+                    </div>
 
                 {/* V12.2 INTERACTIVE 3-PLAN ENTRY CALCULATOR, EV & 4-STEP TARGET LADDER */}
                 <div className="grid grid-cols-3 gap-2 text-xs">
@@ -849,107 +902,114 @@ export const OpportunityScanner: React.FC<Props> = ({
                       <strong className="text-indigo-300">${formatCryptoPrice(tp3Price)}</strong>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 text-[10px] text-slate-400">
-                    <span>
-                      PAVA Win:{" "}
-                      <strong className="text-emerald-300">
-                        {(sig.calibrated_win_prob_pct ?? sig.backtest.shrunk_win_rate_pct).toFixed(1)}%
-                      </strong>
-                    </span>
-                    <span>
-                      Bridge Hit:{" "}
-                      <strong className="text-amber-300">
-                        {(sig.mc_barrier_hit_prob_pct ?? sig.barrier_hit_prob_pct).toFixed(1)}%
-                      </strong>
-                    </span>
-                    <span>
-                      CVaR 97.5:{" "}
-                      <strong className="text-rose-300">
-                        -{(sig.cvar_975_pct ?? 1.85).toFixed(2)}%
-                      </strong>
-                    </span>
-                    <span>
-                      BOCPD:{" "}
-                      <strong className="text-cyan-300">
-                        {(sig.bocpd_changepoint_prob_pct ?? 11.2).toFixed(1)}%
-                      </strong>
-                    </span>
-                    <span>
-                      Rough H:{" "}
-                      <strong className="text-indigo-300">
-                        {(sig.rough_vol_hurst ?? 0.16).toFixed(2)}
-                      </strong>
-                    </span>
-                    <span>
-                      HRP Wt:{" "}
-                      <strong className="text-emerald-300">
-                        {(sig.hrp_weight_pct ?? 12.5).toFixed(1)}%
-                      </strong>
-                    </span>
-                  </div>
+                    </div>
 
-                  {/* V13.0 Data Truth & Microstructure Telemetry Strip */}
-                  <div className="flex flex-wrap items-center justify-between gap-1.5 mt-1 px-2.5 py-1 rounded bg-slate-950/90 border border-cyan-500/30 text-[10px] font-mono text-slate-300">
-                    <span>
-                      🛡️ Data Truth:{" "}
-                      <strong className="text-emerald-300">
-                        {((sig as any).data_quality_score_pct ?? 97.6).toFixed(1)}%
-                      </strong>
-                    </span>
-                    <span>
-                      📐 Effective Spread:{" "}
-                      <strong className="text-cyan-300">
-                        {((sig as any).effective_spread_pct ?? 0.05).toFixed(3)}%
-                      </strong>
-                    </span>
-                    <span>
-                      ⚡ GKYZ Vol:{" "}
-                      <strong className="text-amber-300">
-                        {((sig as any).gkyz_daily_vol_pct ?? 2.15).toFixed(2)}%/d
-                      </strong>
-                    </span>
-                    <span>
-                      ⏱️ Pace RVOL:{" "}
-                      <strong className="text-indigo-300">
-                        {((sig as any).intraday_rvol_pace ?? sig.rvol ?? 1.4).toFixed(2)}x
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-
-                {/* UPGRADE 4: 4 PLAIN-ENGLISH "WHY THE AI LOVES THIS TRADE" BULLETS + (?) TOOLTIPS */}
-                <div className="rounded-lg bg-slate-950/70 border border-slate-800/90 p-2.5 space-y-1.5">
-                  <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">
-                    ✨ Why the AI Loves This Trade
-                  </div>
-                  <div className="space-y-1">
-                    {(sig.plain_english_bullets || []).map((b, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-start justify-between gap-2 text-xs text-slate-300"
+                    {/* Action Footer Buttons */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => onOpenOrderTicket(sig)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow transition"
                       >
-                        <div>
-                          <span className="text-emerald-400 font-bold mr-1">•</span>
-                          <span className="font-semibold text-white">{b.title}: </span>
-                          <span>{b.text}</span>
-                        </div>
-                        <span
-                          title={b.tooltip}
-                          className="text-slate-500 hover:text-cyan-300 cursor-help shrink-0 mt-0.5"
-                        >
-                          <HelpCircle className="w-3.5 h-3.5" />
-                        </span>
-                      </div>
-                    ))}
+                        <ClipboardList className="w-3.5 h-3.5" />
+                        📋 Order Ticket
+                      </button>
+                      <button
+                        onClick={() => onOpenDeepQuant(sig)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition"
+                      >
+                        <Microscope className="w-3.5 h-3.5" />
+                        🔬 Deep Quant &amp; Debate
+                      </button>
+                      <button
+                        onClick={() => onQuickLogTrade(sig)}
+                        className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
+                        + Log Trade
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* PRO QUANT TELEMETRY (Shown when Pro Quant View is active) */}
-                {!simpleSniperView && (
-                  <div className="space-y-2 pt-1 border-t border-slate-800/80">
-                    <div className="grid grid-cols-3 gap-2 text-[11px] bg-slate-950/70 p-2.5 rounded-lg border border-slate-800/80">
+                {/* TAB 2: QUANT MATRIX */}
+                {(cardTabMap[sig.symbol] || "EXECUTION") === "QUANT" && (
+                  <div className="space-y-2.5">
+                    {/* Statistical Edge Strip */}
+                    <div className="p-2.5 rounded-lg bg-slate-950/90 border border-white/10 font-mono text-xs space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="p-2 rounded bg-slate-900 border border-white/10">
+                          <span className="text-[10px] text-slate-400 block">PAVA Calibrated</span>
+                          <span className="font-bold text-emerald-400 text-sm">
+                            {(sig.calibrated_win_prob_pct ?? sig.backtest.shrunk_win_rate_pct).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="p-2 rounded bg-slate-900 border border-white/10">
+                          <span className="text-[10px] text-slate-400 block">Bridge Hit Prob</span>
+                          <span className="font-bold text-amber-300 text-sm">
+                            {(sig.mc_barrier_hit_prob_pct ?? sig.barrier_hit_prob_pct).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="p-2 rounded bg-slate-900 border border-white/10">
+                          <span className="text-[10px] text-slate-400 block">CVaR 97.5</span>
+                          <span className="font-bold text-rose-400 text-sm">
+                            -{(sig.cvar_975_pct ?? 1.85).toFixed(2)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-1 border-t border-white/10 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 block">BOCPD Prob</span>
+                          <span className="text-cyan-300 font-semibold">
+                            {(sig.bocpd_changepoint_prob_pct ?? 11.2).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">Rough Vol H</span>
+                          <span className="text-indigo-300 font-semibold">
+                            {(sig.rough_vol_hurst ?? 0.16).toFixed(2)}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">HRP Weight</span>
+                          <span className="text-emerald-300 font-semibold">
+                            {(sig.hrp_weight_pct ?? 12.5).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1 border-t border-white/10 text-[10px]">
+                        <div>
+                          <span className="text-slate-400 block">Data Truth</span>
+                          <strong className="text-emerald-300">
+                            {((sig as any).data_quality_score_pct ?? 97.6).toFixed(1)}%
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">Effective Spread</span>
+                          <strong className="text-cyan-300">
+                            {((sig as any).effective_spread_pct ?? 0.05).toFixed(3)}%
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">GKYZ Daily Vol</span>
+                          <strong className="text-amber-300">
+                            {((sig as any).gkyz_daily_vol_pct ?? 2.15).toFixed(2)}%/d
+                          </strong>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">Pace RVOL</span>
+                          <strong className="text-indigo-300">
+                            {((sig as any).intraday_rvol_pace ?? sig.rvol ?? 1.4).toFixed(2)}x
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Perp Funding, Deribit, DEX Flow Grid */}
+                    <div className="grid grid-cols-3 gap-2 text-[11px] bg-slate-950/70 p-2.5 rounded-lg border border-white/10">
                       <div>
-                        <span className="text-slate-400 block">Perp & Deribit Options</span>
+                        <span className="text-slate-400 block">Perp &amp; Deribit Options</span>
                         <span className="font-mono text-indigo-300 font-semibold">
                           Fund {sig.funding_rate_apr_pct >= 0 ? "+" : ""}
                           {sig.funding_rate_apr_pct}% • DVOL {sig.crypto_intel.dvol_index}%
@@ -959,7 +1019,7 @@ export const OpportunityScanner: React.FC<Props> = ({
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block">Coinbase & DEX Flow</span>
+                        <span className="text-slate-400 block">Coinbase &amp; DEX Flow</span>
                         <span className="font-mono text-emerald-300 font-semibold">
                           CB Prem {sig.coinbase_premium_pct >= 0 ? "+" : ""}
                           {sig.coinbase_premium_pct}% • DEX {sig.dex_buy_ratio_pct}%
@@ -991,75 +1051,82 @@ export const OpportunityScanner: React.FC<Props> = ({
                   </div>
                 )}
 
-                {/* UPGRADE 3: EXPANDABLE 12-GATE A+ SNIPER CHECKLIST */}
-                <div className="border border-slate-800 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => toggleGates(sig.symbol)}
-                    className="w-full px-3 py-1.5 bg-slate-950/90 hover:bg-slate-900 flex items-center justify-between text-xs font-bold text-slate-300 transition"
-                  >
-                    <span>
-                      🛡️ 12-Gate Institutional A+ Sniper Checklist ({sig.aplus_gates_passed}/12 Passed)
-                    </span>
-                    {gatesExpanded ? (
-                      <ChevronUp className="w-4 h-4 text-slate-400" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-slate-400" />
-                    )}
-                  </button>
-                  {gatesExpanded && (
-                    <div className="p-2.5 bg-slate-950/95 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
-                      {(sig.aplus_checklist_items || []).map((g) => (
-                        <div
-                          key={g.gate}
-                          className={`p-1.5 rounded border flex items-center justify-between gap-2 ${
-                            g.passed
-                              ? "bg-emerald-950/25 border-emerald-800/40 text-emerald-200"
-                              : "bg-rose-950/25 border-rose-800/40 text-rose-200"
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5 truncate">
-                            {g.passed ? (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                            ) : (
-                              <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                            )}
-                            <span className="font-semibold truncate">
-                              G{g.gate}. {g.name}
+                {/* TAB 3: INSTITUTIONAL THESIS & 12-GATE CHECKLIST */}
+                {(cardTabMap[sig.symbol] || "EXECUTION") === "THESIS" && (
+                  <div className="space-y-2.5">
+                    {/* Plain-English AI Thesis */}
+                    <div className="rounded-lg bg-slate-950/70 border border-white/10 p-2.5 space-y-1.5">
+                      <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider">
+                        ✨ Why the AI Loves This Trade
+                      </div>
+                      <div className="space-y-1">
+                        {(sig.plain_english_bullets || []).map((b, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-start justify-between gap-2 text-xs text-slate-300"
+                          >
+                            <div>
+                              <span className="text-emerald-400 font-bold mr-1">•</span>
+                              <span className="font-semibold text-white">{b.title}: </span>
+                              <span>{b.text}</span>
+                            </div>
+                            <span
+                              title={b.tooltip}
+                              className="text-slate-500 hover:text-cyan-300 cursor-help shrink-0 mt-0.5"
+                            >
+                              <HelpCircle className="w-3.5 h-3.5" />
                             </span>
                           </div>
-                          <span className="font-mono text-[10px] text-slate-300 shrink-0">
-                            {g.value}
-                          </span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                {/* Action Footer Buttons */}
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    onClick={() => onOpenOrderTicket(sig)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold shadow transition"
-                  >
-                    <ClipboardList className="w-3.5 h-3.5" />
-                    📋 Order Ticket
-                  </button>
-                  <button
-                    onClick={() => onOpenDeepQuant(sig)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition"
-                  >
-                    <Microscope className="w-3.5 h-3.5" />
-                    🔬 Deep Quant & Debate
-                  </button>
-                  <button
-                    onClick={() => onQuickLogTrade(sig)}
-                    className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
-                    + Log Trade
-                  </button>
-                </div>
+                    {/* 12-Gate Institutional A+ Checklist */}
+                    <div className="border border-white/10 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => toggleGates(sig.symbol)}
+                        className="w-full px-3 py-1.5 bg-slate-950/90 hover:bg-slate-900 flex items-center justify-between text-xs font-bold text-slate-300 transition"
+                      >
+                        <span>
+                          🛡️ 12-Gate Institutional A+ Sniper Checklist ({sig.aplus_gates_passed}/12 Passed)
+                        </span>
+                        {gatesExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        )}
+                      </button>
+                      {gatesExpanded && (
+                        <div className="p-2.5 bg-slate-950/95 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                          {(sig.aplus_checklist_items || []).map((g) => (
+                            <div
+                              key={g.gate}
+                              className={`p-1.5 rounded border flex items-center justify-between gap-2 ${
+                                g.passed
+                                  ? "bg-emerald-950/25 border-emerald-800/40 text-emerald-200"
+                                  : "bg-rose-950/25 border-rose-800/40 text-rose-200"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 truncate">
+                                {g.passed ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                ) : (
+                                  <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                )}
+                                <span className="font-semibold truncate">
+                                  G{g.gate}. {g.name}
+                                </span>
+                              </div>
+                              <span className="font-mono text-[10px] text-slate-300 shrink-0">
+                                {g.value}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );

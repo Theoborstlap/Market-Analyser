@@ -95,23 +95,24 @@ def evaluate_trading_agents_consensus(
     w_off = float(weights.get("fundamental_offshore_sotp", 0.25))
     w_macro = float(weights.get("macro_commodity_sarb", 0.18))
 
-    tech_score = min(98, max(56, int(round(62 + mtf_score * 10 + (rs_rating - 50) * 0.34 + (4 if l2_obi >= 0.10 else 0)))))
+    tech_score = min(98, max(0, int(round(50 + (mtf_score - 1) * 10 + (rs_rating - 50) * 0.5 + res_mom_z * 6.0 + (4 if l2_obi >= 0.10 else -4)))))
     sens_agent_score = min(
         96,
-        max(54, int(round(66 + sens_score_val * 26 + (12 if pead_status == "PEAD_SENS_IGNITION" else 4)))),
+        max(0, int(round(50 + sens_score_val * 26 + (12 if pead_status == "PEAD_SENS_IGNITION" else 0)))),
     )
     off_agent_score = min(
         97,
         max(
-            56,
+            0,
             int(
                 round(
-                    69
+                    52
                     + (
                         22
                         if off_signal in ("OFFSHORE_DISCOUNT_BUY", "TENCENT_CATCHUP_BUY")
-                        else (-8 if off_signal == "OFFSHORE_PREMIUM_CAUTION" else (11 if comm_parity_pos else 4))
+                        else (-12 if off_signal == "OFFSHORE_PREMIUM_CAUTION" else (6 if comm_parity_pos else -4))
                     )
+                    - kalman_z * 5.0
                 )
             ),
         ),
@@ -119,12 +120,12 @@ def evaluate_trading_agents_consensus(
     macro_agent_score = min(
         96,
         max(
-            56,
+            0,
             int(
                 round(
-                    72
-                    + (-12 if shield_active else 9)
-                    + (8 if meta.get("sector") in ("PRECIOUS_MINER", "JSE_ETF_TFSA", "TECH_TENCENT", "SA_INC_RETAIL") else 6)
+                    55
+                    + (-15 if shield_active else 6)
+                    + es_ret * 8.0
                 )
             ),
         ),
@@ -211,25 +212,21 @@ def evaluate_trading_agents_consensus(
         + off_agent_score * w_off
         + macro_agent_score * w_macro
     )
-    if mtf_score == 3:
-        conviction *= 1.09
-    if off_signal in ("OFFSHORE_DISCOUNT_BUY", "TENCENT_CATCHUP_BUY") or meta.get("stt_exempt") or comm_parity_pos:
-        conviction *= 1.07
 
-    final_conviction = round(min(98.4, max(42.0, conviction)), 1)
-    red_team_kill_prob = round(max(0.09, min(0.46, (100.0 - final_conviction) / 108.0 + (bocpd_prob / 650.0))), 3)
+    final_conviction = round(min(98.4, max(0.0, conviction)), 1)
+    red_team_kill_prob = round(max(0.05, min(0.95, (100.0 - final_conviction) / 100.0 + (bocpd_prob / 400.0))), 3)
     red_team_kill_prob_pct = round(red_team_kill_prob * 100.0, 1)
 
-    bull_score = round(min(97.0, final_conviction + 4.5), 1)
-    bear_score = round(max(16.0, 100.0 - final_conviction + 3.0), 1)
+    bull_score = round(min(97.0, final_conviction), 1)
+    bear_score = round(max(5.0, 100.0 - final_conviction), 1)
     bull_bear_spread = round(bull_score - bear_score, 1)
 
     # Cornish-Fisher CVaR_97.5%-Safe Merton-Kelly Position Sizing:
     # Caps Kelly size so that 97.5% tail loss <= 2.0% of account equity (i.e. kelly_frac * cvar_975_pct <= 2.0%)
-    win_p = max(0.54, min(0.91, eb_win_prob))
-    b_odds = max(1.2, max(net_rr_market, net_rr_limit_dip * 0.92))
-    raw_kelly_frac = max(0.06, (win_p * b_odds - (1.0 - win_p)) / b_odds)
-    unconstrained_half_kelly_pct = round(min(38.0, max(5.2, raw_kelly_frac * 55.0)), 2)
+    win_p = max(0.0, min(1.0, eb_win_prob))
+    b_odds = max(0.1, max(net_rr_market, net_rr_limit_dip * 0.92))
+    raw_kelly_frac = max(0.0, (win_p * b_odds - (1.0 - win_p)) / b_odds)
+    unconstrained_half_kelly_pct = round(min(38.0, max(0.0, raw_kelly_frac * 50.0)), 2)
 
     # Cornish-Fisher CVaR_97.5% cap: Position weight W <= 2.0% / (cvar_975_pct / 100.0)
     safe_cvar = max(4.2, min(14.5, cvar_975_pct))

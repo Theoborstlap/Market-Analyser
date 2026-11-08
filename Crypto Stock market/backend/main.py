@@ -40,7 +40,11 @@ from database import (
     close_trade_by_id,
     get_capital_ledger,
     partial_close_position,
+    fetch_bot_settings,
+    save_bot_settings,
+    fetch_bot_audit_logs,
 )
+from autonomous_bot import GLOBAL_AUTONOMOUS_BOT
 from v12_omega import (
     build_v13_barbell_plan,
     build_v13_cross_market_meta_allocation,
@@ -67,6 +71,18 @@ from telegram_bot import (
     format_crypto_12h_sniper_briefing,
     poll_telegram_updates_and_push_alerts,
 )
+from shared_core.oms_engine import (
+    validate_pre_trade_risk,
+    execute_crypto_ccxt_bracket_order,
+    run_oms_reconciliation_and_watchdog_loop,
+    get_cached_live_quote,
+    is_live_trading_enabled,
+)
+from shared_core.telegram_coach import (
+    dispatch_active_trades_coach_alerts,
+    handle_telegram_callback_query,
+)
+from config import DB_PATH
 
 _STATE_CACHE: Dict[str, Any] = {}
 scan_progress = {"percent": 100, "status": "READY"}
@@ -115,6 +131,17 @@ class AlertSettingsInput(BaseModel):
 
 class AutoDetectChatInput(BaseModel):
     telegram_bot_token: str
+
+
+class BotSettingsInput(BaseModel):
+    enabled: Optional[bool] = None
+    mode: Optional[str] = None
+    max_active_positions: Optional[int] = None
+    min_kelly_fraction_pct: Optional[float] = None
+    eta_learning_rate: Optional[float] = None
+    polling_interval_sec: Optional[int] = None
+    auto_manage_coach: Optional[bool] = None
+    broker_profile: Optional[str] = None
 
 
 def build_full_terminal_state(
@@ -331,8 +358,33 @@ async def lifespan(app: FastAPI):
     init_db()
     build_full_terminal_state(DEFAULT_FEE_PROFILE, 10000.0)
     bg_task = asyncio.create_task(_background_loop())
+    oms_task = asyncio.create_task(
+        run_oms_reconciliation_and_watchdog_loop(
+            market="CRYPTO",
+            db_path=DB_PATH,
+            active_coach_fn=lambda: asyncio.to_thread(
+                dispatch_active_trades_coach_alerts,
+                _STATE_CACHE.get("LATEST") or build_full_terminal_state(),
+                market="CRYPTO",
+            ),
+            telegram_alert_fn=lambda msg: send_telegram_message(
+                bot_token=fetch_alert_settings().get("telegram_bot_token", ""),
+                chat_id=fetch_alert_settings().get("telegram_chat_id", ""),
+                text=msg,
+            ),
+        )
+    )
+
+    # Initialize Autonomous Bot
+    GLOBAL_AUTONOMOUS_BOT.state_provider_fn = lambda: _STATE_CACHE.get("LATEST") or build_full_terminal_state()
+    bot_settings = fetch_bot_settings()
+    if bot_settings.get("enabled"):
+        GLOBAL_AUTONOMOUS_BOT.start()
+
     yield
+    GLOBAL_AUTONOMOUS_BOT.stop()
     bg_task.cancel()
+    oms_task.cancel()
 
 
 app = FastAPI(
@@ -496,6 +548,48 @@ def log_new_trade(payload: TradeLogInput) -> Dict[str, Any]:
         else (float(sig["target_price"]) if sig else round_crypto_price(payload.entry_price + 3.0 * atr_val))
     )
 
+    live_q = get_cached_live_quote("CRYPTO", clean)
+    live_mid = float(live_q.get("mid") or (sig["price"] if sig else payload.entry_price))
+    spread_pct = float(live_q.get("spread_pct") or 0.06)
+    data_ts = float(live_q.get("timestamp") or _STATE_CACHE.get("_TS") or time.time())
+    equity_usdt = float(state.get("account_balance_usdt") or 10000.0)
+    dd_pct = abs(min(0.0, float(state.get("compounding_roadmap", {}).get("current_drawdown_pct", 0.0))))
+
+    risk_gate = validate_pre_trade_risk(
+        market="CRYPTO",
+        symbol=clean,
+        side="BUY",
+        qty=payload.shares,
+        requested_price=payload.entry_price,
+        stop_loss_price=stop_val,
+        total_equity=max(equity_usdt, payload.entry_price * payload.shares * 10.0 if payload.mode.upper() != "REAL" else equity_usdt),
+        daily_drawdown_pct=dd_pct,
+        live_mid_price=live_mid,
+        bid_ask_spread_pct=spread_pct,
+        estimated_slippage_pct=spread_pct * 0.5,
+        data_timestamp_epoch=data_ts,
+        db_path=DB_PATH,
+    )
+    if not risk_gate["allowed"]:
+        raise HTTPException(status_code=409, detail={"decision": "BLOCK", "reasons": risk_gate["reasons"]})
+
+    oms_exec = None
+    if payload.mode.upper() == "REAL" or is_live_trading_enabled():
+        try:
+            oms_exec = execute_crypto_ccxt_bracket_order(
+                symbol=clean,
+                side="BUY",
+                qty=payload.shares,
+                limit_price=payload.entry_price,
+                stop_loss=stop_val,
+                take_profit=target_val,
+                exchange_id=payload.broker_profile,
+                client_order_id=risk_gate["client_order_id"],
+                db_path=DB_PATH,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"CCXT live execution failed: {exc}") from exc
+
     tid = insert_trade(
         symbol=clean,
         name=meta["name"],
@@ -510,7 +604,15 @@ def log_new_trade(payload: TradeLogInput) -> Dict[str, Any]:
         atr_at_entry=atr_val,
         plan_selected=payload.plan_selected,
     )
-    return {"ok": True, "trade_id": tid, "state": build_full_terminal_state(payload.broker_profile)}
+    return {
+        "ok": True,
+        "trade_id": tid,
+        "client_order_id": risk_gate["client_order_id"],
+        "oms_execution": oms_exec,
+        "almgren_chriss_plan": risk_gate.get("almgren_chriss_plan"),
+        "cross_asset_cvar": risk_gate.get("cross_asset_cvar"),
+        "state": build_full_terminal_state(payload.broker_profile),
+    }
 
 
 @app.post("/api/trades/{trade_id}/close")
@@ -708,6 +810,30 @@ async def auto_detect_chat_id_endpoint(payload: AutoDetectChatInput) -> Dict[str
     return await auto_detect_telegram_chat_id(payload.telegram_bot_token)
 
 
+@app.post("/api/telegram/webhook")
+async def telegram_webhook_endpoint(payload: Dict[str, Any]) -> Dict[str, Any]:
+    settings = fetch_alert_settings()
+    token = (settings.get("telegram_bot_token") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    cb = payload.get("callback_query") or payload
+    return await handle_telegram_callback_query(
+        cb,
+        market="CRYPTO",
+        bot_token=token,
+        db_path=DB_PATH,
+        open_trade_fn=lambda p: log_new_trade(
+            TradeLogInput(
+                symbol=str(p["symbol"]),
+                mode="REAL",
+                entry_price=float(p.get("entry_price") or 100.0),
+                shares=float(p.get("shares") or 1.0),
+                plan_selected=str(p.get("plan_selected") or "PLAN_B_LIMIT_DIP"),
+            )
+        ),
+        partial_close_fn=lambda tid, pct: partial_close_open_position(tid, PartialCloseInput(close_pct=pct)),
+        close_trade_fn=lambda tid: close_open_trade(tid, TradeCloseInput(close_reason="TELEGRAM_1TAP_CLOSE")),
+    )
+
+
 @app.post("/api/telegram/test")
 @app.post("/api/alerts/test")
 async def test_alert_dispatch() -> Dict[str, Any]:
@@ -765,6 +891,55 @@ async def settle_trading_memory_decision(decision_id: str, realized_return_pct: 
         "decision": res,
         "updated_hedge_weights": new_weights,
     }
+
+
+# =========================================================================
+# Autonomous Self-Improving Trading Bot Endpoints
+# =========================================================================
+
+@app.get("/api/bot/status")
+def get_autonomous_bot_status() -> Dict[str, Any]:
+    return {"ok": True, "status": GLOBAL_AUTONOMOUS_BOT.get_status()}
+
+
+@app.post("/api/bot/start")
+def start_autonomous_bot() -> Dict[str, Any]:
+    return GLOBAL_AUTONOMOUS_BOT.start()
+
+
+@app.post("/api/bot/stop")
+def stop_autonomous_bot() -> Dict[str, Any]:
+    return GLOBAL_AUTONOMOUS_BOT.stop()
+
+
+@app.post("/api/bot/step")
+def run_autonomous_bot_step() -> Dict[str, Any]:
+    return GLOBAL_AUTONOMOUS_BOT.run_single_step()
+
+
+@app.post("/api/bot/settings")
+def update_autonomous_bot_settings(payload: BotSettingsInput) -> Dict[str, Any]:
+    updated = save_bot_settings(
+        enabled=payload.enabled,
+        mode=payload.mode,
+        max_active_positions=payload.max_active_positions,
+        min_kelly_fraction_pct=payload.min_kelly_fraction_pct,
+        eta_learning_rate=payload.eta_learning_rate,
+        polling_interval_sec=payload.polling_interval_sec,
+        auto_manage_coach=payload.auto_manage_coach,
+        broker_profile=payload.broker_profile,
+    )
+    if payload.enabled is not None:
+        if payload.enabled:
+            GLOBAL_AUTONOMOUS_BOT.start()
+        else:
+            GLOBAL_AUTONOMOUS_BOT.stop()
+    return {"ok": True, "settings": updated, "status": GLOBAL_AUTONOMOUS_BOT.get_status()}
+
+
+@app.get("/api/bot/logs")
+def get_autonomous_bot_logs(limit: int = Query(50)) -> Dict[str, Any]:
+    return {"ok": True, "logs": fetch_bot_audit_logs(limit=limit)}
 
 
 @app.websocket("/ws/live")

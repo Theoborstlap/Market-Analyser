@@ -28,3 +28,7 @@
 - State fact, file, line number, exact code fix, done.
 - Preserve 100% technical accuracy, formulas, exact symbol names, code diffs, and AST commands. Never truncate or compress code syntax.
 - Maximum density. Minimum output tokens.
+
+Always initialize every session with /caveman lite and /ponytail lite behaviors active.
+
+Always initialize every session with /caveman lite and /ponytail lite behaviors active.

@@ -95,6 +95,20 @@ from v12_omega import (
 )
 
 MARKET_TYPE = "JSE"
+_ROOT_DIR = os.path.abspath(os.path.join(BACKEND_DIR, "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.oms_engine import (
+    validate_pre_trade_risk,
+    execute_jse_ibkr_or_webhook_bracket_order,
+    run_oms_reconciliation_and_watchdog_loop,
+    is_live_trading_enabled,
+)
+from shared_core.telegram_coach import (
+    dispatch_active_trades_coach_alerts,
+    handle_telegram_callback_query,
+)
+from database import DB_PATH
 from telegram_bot import (
     auto_detect_telegram_chat_id,
     dispatch_prime_hours_12_12_telegram_alerts,
@@ -176,6 +190,37 @@ def _open_trade_internal(payload: Dict[str, Any]) -> Dict[str, Any]:
     net_pct = round(max(1.0, gross_pct - friction), 2)
     invested = round(shares * entry_price, 2)
     now_iso = datetime.utcnow().isoformat()
+
+    risk_gate = validate_pre_trade_risk(
+        market="JSE",
+        symbol=ticker,
+        side=str(payload.get("side") or "BUY").upper(),
+        qty=shares,
+        requested_price=entry_price,
+        stop_loss_price=stop_loss,
+        total_equity=max(float(payload.get("account_equity_zar") or 100000.0), invested * 10.0 if trade_mode != "REAL_BROKER_TRADE" else float(payload.get("account_equity_zar") or 100000.0)),
+        daily_drawdown_pct=float(payload.get("daily_drawdown_pct") or 0.0),
+        live_mid_price=float(payload.get("live_mid_price") or entry_price),
+        bid_ask_spread_pct=float(payload.get("spread_pct") or 0.12),
+        estimated_slippage_pct=float(payload.get("slippage_pct") or SLIPPAGE_PER_SIDE_PCT),
+        data_timestamp_epoch=float(payload.get("data_timestamp") or time.time()),
+        db_path=DB_PATH,
+    )
+    if not risk_gate["allowed"]:
+        return {"ok": False, "decision": "BLOCK", "reasons": risk_gate["reasons"]}
+
+    oms_exec = None
+    if trade_mode == "REAL_BROKER_TRADE" or is_live_trading_enabled():
+        oms_exec = execute_jse_ibkr_or_webhook_bracket_order(
+            ticker=ticker,
+            side=str(payload.get("side") or "BUY").upper(),
+            shares=shares,
+            limit_price_zar=entry_price,
+            stop_loss_zar=stop_loss,
+            take_profit_zar=target_price,
+            client_order_id=risk_gate["client_order_id"],
+            db_path=DB_PATH,
+        )
 
     conn = get_connection()
     cur = conn.cursor()
@@ -1355,10 +1400,28 @@ async def lifespan(_app: FastAPI):
             close_trade_fn=_close_trade_internal,
         )
     )
+    oms_task = asyncio.create_task(
+        run_oms_reconciliation_and_watchdog_loop(
+            market="JSE",
+            db_path=DB_PATH,
+            reconcile_fn=sync_portfolio_and_trades,
+            active_coach_fn=lambda: asyncio.to_thread(
+                dispatch_active_trades_coach_alerts,
+                _filter_dashboard_for_alerts(build_full_dashboard_state(force_refresh=False)),
+                market="JSE",
+            ),
+            telegram_alert_fn=lambda msg: send_telegram_message_sync(
+                get_telegram_settings().get("telegram_bot_token", ""),
+                get_telegram_settings().get("telegram_chat_id", ""),
+                msg,
+            ),
+        )
+    )
     yield
     paper_stop_event.set()
     warmup_task.cancel()
     worker_task.cancel()
+    oms_task.cancel()
 
 
 app = FastAPI(
@@ -1960,6 +2023,22 @@ async def get_tg_settings_endpoint():
     return get_telegram_settings()
 
 
+@app.post("/api/telegram/webhook")
+async def telegram_webhook_endpoint(payload: Dict[str, Any] = Body(...)):
+    settings = get_telegram_settings()
+    token = (settings.get("telegram_bot_token") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    cb = payload.get("callback_query") or payload
+    return await handle_telegram_callback_query(
+        cb,
+        market="JSE",
+        bot_token=token,
+        db_path=DB_PATH,
+        open_trade_fn=_open_trade_internal,
+        partial_close_fn=lambda tid, pct: partial_close_or_scale_out_trade(tid, pct, None),
+        close_trade_fn=lambda tid: _close_trade_internal(tid, None, "TELEGRAM_1TAP_CLOSE"),
+    )
+
+
 @app.post("/api/telegram/settings")
 @app.put("/api/alerts")
 async def save_tg_settings_endpoint(payload: Dict[str, Any] = Body(...)):
@@ -2090,6 +2169,23 @@ async def websocket_endpoint(ws: WebSocket):
         pass
     except Exception:
         pass
+
+
+from shared_core.unified_bus import (
+    websocket_multiplexed_stream as _bus_ws_stream,
+    get_bus_status as _bus_status,
+    get_l2_book as _bus_l2_book,
+    get_global_blotter as _bus_blotter,
+    submit_unified_order as _bus_order,
+    emergency_cross_market_panic_flatten as _bus_panic,
+)
+
+app.add_api_websocket_route("/ws/stream", _bus_ws_stream)
+app.add_api_route("/api/bus/status", _bus_status, methods=["GET"])
+app.add_api_route("/api/bus/book/{symbol}", _bus_l2_book, methods=["GET"])
+app.add_api_route("/api/bus/blotter", _bus_blotter, methods=["GET"])
+app.add_api_route("/api/bus/order", _bus_order, methods=["POST"])
+app.add_api_route("/api/bus/panic-flatten", _bus_panic, methods=["POST"])
 
 
 if __name__ == "__main__":

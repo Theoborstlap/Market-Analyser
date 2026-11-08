@@ -31,6 +31,16 @@ except Exception:
     _SSL_CTX = ssl._create_unverified_context()
 
 from config import CRYPTO_UNIVERSE_MAP, round_crypto_price
+import sys
+
+_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+from shared_core.oms_engine import (
+    fetch_live_crypto_l1_l2_and_ohlcv,
+    is_live_trading_enabled,
+    start_ccxt_pro_websocket_stream,
+)
 
 try:
     import httpx
@@ -46,13 +56,56 @@ except Exception:
     HAS_YFINANCE = False
 
 _SERIES_CACHE: Dict[str, Dict[str, Any]] = {}
+_MTF_CACHE: Dict[str, Dict[str, Any]] = {}
 _CACHE_TTL_SEC = 900.0  # 15-minute live Yahoo Finance cache TTL
 _USDZAR_CACHE: Dict[str, Any] = {"ts": 0.0, "data": None}
 _PREFETCH_TS: float = 0.0
 
 
+def _fetch_crypto_intraday_closes(yf_symbol: str, interval: str = "15m", range_str: str = "5d", timeout_sec: float = 3.0) -> Optional[np.ndarray]:
+    now = time.time()
+    key = f"{yf_symbol}:{interval}"
+    cached = _MTF_CACHE.get(key)
+    if cached and (now - cached["ts"]) < _CACHE_TTL_SEC:
+        return cached["closes"]
+    encoded = urllib.parse.quote(yf_symbol)
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range={range_str}&interval={interval}&includePrePost=false"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout_sec, context=_SSL_CTX) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        result = (payload.get("chart", {}).get("result") or [None])[0]
+        if not result:
+            return None
+        closes_raw = ((result.get("indicators", {}).get("quote") or [{}])[0]).get("close") or []
+        c_arr = np.array([float(c) for c in closes_raw if c is not None and c > 0], dtype=float)
+        if len(c_arr) >= 20:
+            _MTF_CACHE[key] = {"ts": now, "closes": c_arr}
+            return c_arr
+    except Exception:
+        pass
+    return cached["closes"] if cached else None
+
+
 def _fetch_yahoo_crypto_chart(yf_symbol: str, range_str: str = "3mo", timeout_sec: float = 4.5) -> Optional[Dict[str, np.ndarray]]:
-    """Fast live Yahoo Finance v8 chart fetcher with certifi SSL and exact regularMarketPrice."""
+    """Primary: Live Exchange L1/L2 + OHLCV (Binance/Bybit/VALR). Fallback: Yahoo v8 when LIVE_TRADING=false."""
+    live_ex = fetch_live_crypto_l1_l2_and_ohlcv(yf_symbol, limit=365 if "y" in range_str else 120, timeout_sec=timeout_sec)
+    if live_ex is not None:
+        return {
+            "opens": live_ex.get("opens", live_ex.get("open")),
+            "highs": live_ex.get("highs", live_ex.get("high")),
+            "lows": live_ex.get("lows", live_ex.get("low")),
+            "closes": live_ex.get("closes", live_ex.get("close")),
+            "volumes": live_ex.get("volumes", live_ex.get("volume")),
+        }
+    if is_live_trading_enabled() and not ("=" in yf_symbol or yf_symbol.startswith("^") or "DX-Y" in yf_symbol):
+        return None
     encoded = urllib.parse.quote(yf_symbol)
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range={range_str}&interval=1d&includePrePost=false"
     payload = None
@@ -304,11 +357,21 @@ def _generate_institutional_6y_crypto_series(
 
 def _splice_live_tail_into_6y_crypto(symbol: str, live_tail: Dict[str, np.ndarray], n_days: int = 2190) -> Dict[str, np.ndarray]:
     """Anchors the 6-year institutional crypto history prefix to the start of the live Yahoo Finance window and splices the exact live bars into the tail."""
-    tail_n = min(len(live_tail["closes"]), 90)
-    prefix_anchor = float(live_tail["opens"][-tail_n])
+    c_arr = live_tail.get("closes", live_tail.get("close"))
+    o_arr = live_tail.get("opens", live_tail.get("open"))
+    h_arr = live_tail.get("highs", live_tail.get("high"))
+    l_arr = live_tail.get("lows", live_tail.get("low"))
+    v_arr = live_tail.get("volumes", live_tail.get("volume"))
+    if c_arr is None or len(c_arr) == 0:
+        return _generate_institutional_6y_crypto_series(symbol, 25.0, n_days=n_days)
+    tail_n = min(len(c_arr), 90)
+    prefix_anchor = float(o_arr[-tail_n])
     base = _generate_institutional_6y_crypto_series(symbol, prefix_anchor, n_days=n_days)
-    for k in ("opens", "highs", "lows", "closes", "volumes"):
-        base[k][-tail_n:] = live_tail[k][-tail_n:]
+    base["opens"][-tail_n:] = o_arr[-tail_n:]
+    base["highs"][-tail_n:] = h_arr[-tail_n:]
+    base["lows"][-tail_n:] = l_arr[-tail_n:]
+    base["closes"][-tail_n:] = c_arr[-tail_n:]
+    base["volumes"][-tail_n:] = v_arr[-tail_n:]
     return base
 
 
@@ -349,13 +412,18 @@ def get_symbol_6y_history(symbol: str, ref_price: Optional[float] = None) -> Dic
     cached = _SERIES_CACHE.get(clean)
     if cached and (now - cached["ts"]) < _CACHE_TTL_SEC:
         series = cached["series"]
-        return {
+        out = {
             "opens": series["opens"].copy(),
             "highs": series["highs"].copy(),
             "lows": series["lows"].copy(),
             "closes": series["closes"].copy(),
             "volumes": series["volumes"].copy(),
         }
+        if "closes_15m" in series and series["closes_15m"] is not None:
+            out["closes_15m"] = series["closes_15m"].copy()
+        if "closes_1h" in series and series["closes_1h"] is not None:
+            out["closes_1h"] = series["closes_1h"].copy()
+        return out
 
     meta = CRYPTO_UNIVERSE_MAP.get(clean, {})
     fallback_price = ref_price or meta.get("ref_price", 25.0)
@@ -364,6 +432,12 @@ def get_symbol_6y_history(symbol: str, ref_price: Optional[float] = None) -> Dic
     live_tail = _fetch_yahoo_crypto_chart(yf_ticker, range_str="3mo", timeout_sec=4.5)
     if live_tail is not None:
         series = _splice_live_tail_into_6y_crypto(clean, live_tail, n_days=2190)
+        c15 = _fetch_crypto_intraday_closes(yf_ticker, interval="15m", range_str="5d")
+        c1h = _fetch_crypto_intraday_closes(yf_ticker, interval="60m", range_str="1mo")
+        if c15 is not None:
+            series["closes_15m"] = c15
+        if c1h is not None:
+            series["closes_1h"] = c1h
         _SERIES_CACHE[clean] = {"ts": now, "series": series}
         return series
 

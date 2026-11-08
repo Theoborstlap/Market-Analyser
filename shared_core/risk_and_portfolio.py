@@ -349,3 +349,14 @@ def ulcer_index(prices: Union[np.ndarray, List[float]]) -> float:
     peaks = np.maximum.accumulate(arr)
     drawdowns_pct = ((arr - peaks) / np.maximum(1e-8, peaks)) * 100.0
     return float(math.sqrt(np.mean(drawdowns_pct ** 2)))
+
+
+from .institutional_quant import (
+    ledoit_wolf_shrinkage,
+    oas_shrinkage,
+    compute_cross_asset_cvar_and_beta,
+    compute_almgren_chriss_execution_plan,
+    evaluate_cpcv_dsr_gatekeeper,
+    get_global_kill_switch_state,
+)
+
