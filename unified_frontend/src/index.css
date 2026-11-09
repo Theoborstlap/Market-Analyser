@@ -11,9 +11,91 @@
   --accent-crimson-aaa: #ff2e54;
 }
 
+/* Accessibility floor: no text below 11px (overrides text-[8px|9px|10px]). */
+.text-\[8px\],
+.text-\[9px\],
+.text-\[10px\] {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* Skip layout/paint of off-screen scanner cards (large per-card button counts). */
+.scanner-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 520px;
+}
+
 body {
   background-color: var(--bg-obsidian-aaa);
   color: var(--fg-crisp-aaa);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-feature-settings: "tnum" on, "lnum" on;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Glassmorphism primitives */
+.glass-panel {
+  background: rgba(10, 16, 28, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-glow {
+  background: rgba(12, 20, 35, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  box-shadow: 0 0 35px rgba(0, 229, 255, 0.08);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.glass-card-interactive {
+  background: rgba(10, 15, 26, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-interactive:hover {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: rgba(0, 229, 255, 0.35);
+  box-shadow: 0 10px 30px -10px rgba(0, 229, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Cyber HUD crosshairs & grid */
+.hud-grid {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.hud-grid-dots {
+  background-image: radial-gradient(rgba(0, 229, 255, 0.15) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Slick dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #04070d;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 229, 255, 0.4);
 }

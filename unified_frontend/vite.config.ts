@@ -97,12 +97,12 @@ export default defineConfig({
         configure: silentOfflineProxy,
       },
       "/api/bus": {
-        target: "http://127.0.0.1:8000",
+        target: "http://127.0.0.1:8003",
         changeOrigin: true,
         configure: silentOfflineProxy,
       },
       "/ws/stream": {
-        target: "ws://127.0.0.1:8000",
+        target: "ws://127.0.0.1:8003",
         ws: true,
         configure: silentOfflineProxy,
       },

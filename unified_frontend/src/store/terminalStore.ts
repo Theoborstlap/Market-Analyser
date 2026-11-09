@@ -521,7 +521,7 @@ class NormalizedTerminalStore {
 
       function connect(url) {
         try {
-          ws = new WebSocket(url);
+          ws = new self.WebSocket(url);
         } catch (err) {
           scheduleReconnect(url);
           return;

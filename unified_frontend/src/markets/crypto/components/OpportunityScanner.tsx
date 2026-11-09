@@ -503,7 +503,7 @@ export const OpportunityScanner: React.FC<Props> = ({
           return (
             <div
               key={sig.symbol}
-              className="bg-slate-900/95 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition flex flex-col justify-between shadow-lg"
+              className="scanner-card bg-slate-900/95 border border-white/10 hover:border-white/20 rounded-xl overflow-hidden transition flex flex-col justify-between shadow-lg"
             >
               {/* UPGRADE 4 + V12.2: TRAFFIC-LIGHT VERDICT HEADER & TOP-3 TOURNAMENT BADGES */}
               <div

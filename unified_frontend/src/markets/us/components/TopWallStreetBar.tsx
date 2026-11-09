@@ -13,6 +13,7 @@ import {
   LineChart,
   Send,
   ListPlus,
+  Bot,
 } from "lucide-react";
 import {
   MacroIntel,
@@ -37,6 +38,7 @@ interface Props {
   onOpenCompoundingModal: () => void;
   onOpenWatchlistModal: () => void;
   onOpenTelegramModal: () => void;
+  onOpenBot?: () => void;
   antiTiltTriggered?: boolean;
 }
 
@@ -55,6 +57,7 @@ export const TopWallStreetBar: React.FC<Props> = ({
   onOpenCompoundingModal,
   onOpenWatchlistModal,
   onOpenTelegramModal,
+  onOpenBot,
   antiTiltTriggered,
 }) => {
   const { session } = macro;
@@ -195,11 +198,20 @@ export const TopWallStreetBar: React.FC<Props> = ({
           </button>
 
           <button
+            onClick={onOpenBot}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-sky-500/40 text-sky-300 text-xs font-bold transition shadow-sm"
+            title="Open Autonomous Self-Learning Trading Bot"
+          >
+            <Bot className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+            <span className="hidden sm:inline">Auto Bot</span>
+          </button>
+
+          <button
             onClick={onOpenTelegramModal}
             className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 text-xs font-bold transition"
           >
             <Send className="w-3 h-3 text-sky-400" />
-            <span className="hidden lg:inline">Bot</span>
+            <span className="hidden lg:inline">Alerts</span>
           </button>
 
           <button

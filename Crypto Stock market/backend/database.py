@@ -907,7 +907,7 @@ def record_signal_alert_sent(ticker: str, alert_date: str, verdict: str, recomme
 def get_trading_memory_log() -> Any:
     """Returns the persistent TradingMemoryLog instance for Crypto market."""
     from shared_core import TradingMemoryLog
-    memory_db = os.path.join(DB_DIR, "trading_memory.db")
+    memory_db = os.path.join(os.path.dirname(DB_PATH), "trading_memory.db")
     return TradingMemoryLog(db_path=memory_db)
 
 

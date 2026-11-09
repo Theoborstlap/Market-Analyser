@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "headroom": {
+      "command": "/Users/theo/.local/bin/headroom",
+      "args": ["mcp", "serve"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--caps", "vision"]
+    }
+  }
+}

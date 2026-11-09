@@ -689,7 +689,7 @@ export const OpportunityScanner: React.FC<OpportunityScannerProps> = ({
           return (
             <div
               key={opp.ticker}
-              className="bg-slate-900/95 border border-slate-800 hover:border-slate-700 rounded-xl overflow-hidden transition flex flex-col justify-between shadow-lg"
+              className="scanner-card bg-slate-900/95 border border-slate-800 hover:border-slate-700 rounded-xl overflow-hidden transition flex flex-col justify-between shadow-lg"
             >
               {/* TRAFFIC-LIGHT VERDICT HEADER & TOP-3 TOURNAMENT BADGES */}
               <div

@@ -15,6 +15,7 @@ import {
   ListPlus,
   RotateCcw,
   RefreshCw,
+  Bot,
 } from "lucide-react";
 import {
   FeeProfileKey,
@@ -43,6 +44,7 @@ export interface TopSovereignBarProps {
   onOpenCrossMarketModal: () => void;
   onOpenCompoundingModal: () => void;
   onOpenWatchlistModal: () => void;
+  onOpenBot?: () => void;
 }
 
 export const TopSovereignBar: React.FC<TopSovereignBarProps> = ({
@@ -62,6 +64,7 @@ export const TopSovereignBar: React.FC<TopSovereignBarProps> = ({
   onOpenCrossMarketModal,
   onOpenCompoundingModal,
   onOpenWatchlistModal,
+  onOpenBot,
 }) => {
   const num = (v: unknown): number | null =>
     v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
@@ -251,11 +254,20 @@ export const TopSovereignBar: React.FC<TopSovereignBarProps> = ({
           </button>
 
           <button
+            onClick={onOpenBot}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-sky-500/40 text-sky-300 text-xs font-bold transition shadow-sm"
+            title="Open Autonomous Self-Learning Trading Bot"
+          >
+            <Bot className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+            <span className="hidden sm:inline">Auto Bot</span>
+          </button>
+
+          <button
             onClick={onOpenTelegramModal}
             className="flex items-center gap-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 text-xs font-bold transition"
           >
             <Send className="w-3 h-3 text-sky-400" />
-            <span className="hidden lg:inline">Bot</span>
+            <span className="hidden lg:inline">Alerts</span>
           </button>
 
           <button

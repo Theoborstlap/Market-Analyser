@@ -526,12 +526,14 @@ export interface JseMarketAppProps {
   isActive?: boolean;
   onSwitchMarket?: (market: "jse" | "us" | "crypto") => void;
   onWsStatusChange?: (connected: boolean, lastTick?: string) => void;
+  onOpenBot?: () => void;
 }
 
 export default function SovereignJseTerminalPage({
   isActive = true,
   onSwitchMarket,
   onWsStatusChange,
+  onOpenBot,
 }: JseMarketAppProps = {}) {
   const [state, setState] = useState<FullTerminalState | null>(null);
   const [jseSubView, setJseSubView] = useState<"SCANNER" | "CORE" | "PAPER_LAB">("SCANNER");
@@ -1216,6 +1218,7 @@ export default function SovereignJseTerminalPage({
         onOpenCrossMarketModal={() => setCrossMarketModalOpen(true)}
         onOpenCompoundingModal={() => setCompoundingModalOpen(true)}
         onOpenWatchlistModal={() => setWatchlistModalOpen(true)}
+        onOpenBot={onOpenBot}
       />
 
       {/* JSE Workspace Sub-Navigation: Sovereign Scanner | Core ETF Portfolio | Paper Lab | Data Health */}

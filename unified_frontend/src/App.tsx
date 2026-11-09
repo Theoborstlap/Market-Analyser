@@ -7,66 +7,65 @@ import {
 import {
   InstitutionalTelemetryStrip,
   QuickOrderTicketModal,
-  VirtualizedGlobalBlotter,
-  WebGlOrderBookCanvas,
 } from "./components/InstitutionalBlotterAndCanvas";
 import { terminalStore, useTerminalStore } from "./store/terminalStore";
+import CommandOverviewPortal from "./components/CommandOverviewPortal";
 import JseMarketApp from "./markets/jse/App";
 import UsMarketApp from "./markets/us/App";
 import CryptoMarketApp from "./markets/crypto/App";
+import TradingBotDashboard from "./components/TradingBotDashboard";
 
 const LS_ACTIVE_MARKET_KEY = "sovereign_unified_active_market_v13";
 
 function resolveInitialMarket(): MarketId {
   if (typeof window !== "undefined") {
     const hash = window.location.hash.replace("#", "").trim().toLowerCase();
-    if (hash === "jse" || hash === "us" || hash === "crypto") {
-      return hash;
+    if (hash === "home" || hash === "jse" || hash === "us" || hash === "crypto" || hash === "bot") {
+      return hash as MarketId;
     }
     try {
       const saved = window.localStorage.getItem(LS_ACTIVE_MARKET_KEY);
-      if (saved === "jse" || saved === "us" || saved === "crypto") {
-        return saved;
+      if (saved === "home" || saved === "jse" || saved === "us" || saved === "crypto" || saved === "bot") {
+        return saved as MarketId;
       }
     } catch {
       // ignore storage errors
     }
   }
-  return "jse";
+  return "home";
 }
 
 export const App: React.FC = () => {
   const [activeMarket, setActiveMarket] = useState<MarketId>(resolveInitialMarket);
   const [layoutMode, setLayoutMode] = useState<"SINGLE" | "DOCKED_GRID">("SINGLE");
-  const [showDockDrawer, setShowDockDrawer] = useState<boolean>(true);
   const [hudDrawerOpen, setHudDrawerOpen] = useState<boolean>(false);
-  const orders = useTerminalStore((s) => s.orders);
-  const [blotterExpanded, setBlotterExpanded] = useState<boolean>(() => orders.length > 0);
 
-  useEffect(() => {
-    if (orders.length > 0) {
-      setBlotterExpanded(true);
-    }
-  }, [orders.length]);
   const [visitedMarkets, setVisitedMarkets] = useState<Record<MarketId, boolean>>(
     () => ({
-      jse: true,
+      home: true,
+      jse: resolveInitialMarket() === "jse",
       us: resolveInitialMarket() === "us",
       crypto: resolveInitialMarket() === "crypto",
+      bot: resolveInitialMarket() === "bot",
     })
   );
+
   const [wsStatusByMarket, setWsStatusByMarket] = useState<
     Record<MarketId, { connected: boolean; lastTick: string | null }>
   >({
+    home: { connected: true, lastTick: null },
     jse: { connected: false, lastTick: null },
     us: { connected: false, lastTick: null },
     crypto: { connected: false, lastTick: null },
+    bot: { connected: false, lastTick: null },
   });
 
   const [healthMap, setHealthMap] = useState<Record<MarketId, EngineHealthState>>({
+    home: { online: true, port: 5173 },
     jse: { online: false, port: 8000 },
     us: { online: false, port: 8001 },
     crypto: { online: false, port: 8002 },
+    bot: { online: false, port: 8002 },
   });
 
   const busWsConnected = useTerminalStore((s) => s.wsConnected);
@@ -88,13 +87,14 @@ export const App: React.FC = () => {
   }, []);
 
   const activateDockedGrid = useCallback(() => {
-    setVisitedMarkets({ jse: true, us: true, crypto: true });
+    setVisitedMarkets({ home: true, jse: true, us: true, crypto: true, bot: true });
     setLayoutMode((prev) => (prev === "DOCKED_GRID" ? "SINGLE" : "DOCKED_GRID"));
   }, []);
 
-  // Institutional Bloomberg / Vim Hotkeys:
-  // Space (Quick Order Ticket), Shift+Esc (Emergency Panic Flatten),
-  // J/K (Blotter row navigation), 1/2/3/4 or Alt+1/2/3/4 (JSE / US / Crypto / Docked Grid)
+  // Hotkeys:
+  // Space: Quick Order Ticket, Shift+Esc: Emergency Panic Flatten
+  // 0: Overview / Home, 1: JSE, 2: US, 3: Crypto, 4: Bot, 5/G: Docked 4x Grid
+  // J/K: Blotter row navigation
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -154,7 +154,11 @@ export const App: React.FC = () => {
         return;
       }
 
-      if (e.key === "1") {
+      if (e.key === "0" || e.key === "h" || e.key === "H") {
+        e.preventDefault();
+        setLayoutMode("SINGLE");
+        handleSelectMarket("home");
+      } else if (e.key === "1") {
         e.preventDefault();
         setLayoutMode("SINGLE");
         handleSelectMarket("jse");
@@ -168,6 +172,10 @@ export const App: React.FC = () => {
         handleSelectMarket("crypto");
       } else if (e.key === "4") {
         e.preventDefault();
+        setLayoutMode("SINGLE");
+        handleSelectMarket("bot");
+      } else if (e.key === "5" || e.key === "g" || e.key === "G") {
+        e.preventDefault();
         activateDockedGrid();
       }
     };
@@ -179,9 +187,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash.replace("#", "").trim().toLowerCase();
-      if (hash === "jse" || hash === "us" || hash === "crypto") {
-        setActiveMarket(hash);
-        setVisitedMarkets((prev) => (prev[hash] ? prev : { ...prev, [hash]: true }));
+      if (hash === "home" || hash === "jse" || hash === "us" || hash === "crypto" || hash === "bot") {
+        setActiveMarket(hash as MarketId);
+        setVisitedMarkets((prev) => (prev[hash as MarketId] ? prev : { ...prev, [hash]: true }));
       }
     };
     window.addEventListener("hashchange", onHashChange);
@@ -210,6 +218,7 @@ export const App: React.FC = () => {
         checks[2].status === "fulfilled" ? checks[2].value : null;
 
       setHealthMap({
+        home: { online: true, port: 5173 },
         jse: {
           online: Boolean(jsePayload && (jsePayload.ok || jsePayload.status === "ok")),
           port: 8000,
@@ -226,6 +235,12 @@ export const App: React.FC = () => {
           ),
           port: 8002,
           universeCount: cryptoPayload?.universe_count,
+        },
+        bot: {
+          online: Boolean(
+            cryptoPayload && (cryptoPayload.ok || cryptoPayload.status === "ok")
+          ),
+          port: 8002,
         },
       });
     };
@@ -268,7 +283,7 @@ export const App: React.FC = () => {
     }));
   }, []);
 
-  const activeWs = wsStatusByMarket[activeMarket];
+  const activeWs = wsStatusByMarket[activeMarket] || { connected: true, lastTick: null };
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#04070D] text-[#F8FAFC]">
@@ -283,6 +298,8 @@ export const App: React.FC = () => {
         lastWsTick={busLastTick || activeWs.lastTick}
         hudDrawerOpen={hudDrawerOpen}
         onToggleHudDrawer={() => setHudDrawerOpen((p) => !p)}
+        layoutMode={layoutMode}
+        onToggleLayoutMode={activateDockedGrid}
       />
 
       {hudDrawerOpen && (
@@ -301,83 +318,58 @@ export const App: React.FC = () => {
         {layoutMode === "DOCKED_GRID" ? (
           <div
             data-testid="docked-multi-monitor-grid"
-            className="grid grid-cols-1 xl:grid-cols-2 gap-2 p-2 bg-[#04070D]"
+            className="grid grid-cols-1 xl:grid-cols-2 gap-3 p-3 bg-[#04070D]"
           >
-            <div className="border border-white/10 rounded-md overflow-y-auto max-h-[46vh]">
+            <div className="border border-white/10 rounded-2xl overflow-y-auto max-h-[46vh] glass-panel">
               <JseMarketApp
                 isActive={true}
                 onSwitchMarket={handleSelectMarket}
                 onWsStatusChange={handleJseWs}
+                onOpenBot={() => handleSelectMarket("bot")}
               />
             </div>
-            <div className="border border-white/10 rounded-md overflow-y-auto max-h-[46vh]">
+            <div className="border border-white/10 rounded-2xl overflow-y-auto max-h-[46vh] glass-panel">
               <UsMarketApp
                 isActive={true}
                 onSwitchMarket={handleSelectMarket}
                 onWsStatusChange={handleUsWs}
+                onOpenBot={() => handleSelectMarket("bot")}
               />
             </div>
-            <div className="border border-white/10 rounded-md overflow-y-auto max-h-[46vh]">
+            <div className="border border-white/10 rounded-2xl overflow-y-auto max-h-[46vh] glass-panel">
               <CryptoMarketApp
                 isActive={true}
                 onSwitchMarket={handleSelectMarket}
                 onWsStatusChange={handleCryptoWs}
+                onOpenBot={() => handleSelectMarket("bot")}
               />
             </div>
-            <div className="grid grid-rows-2 gap-2 max-h-[46vh]">
-              <WebGlOrderBookCanvas />
-              <VirtualizedGlobalBlotter />
+            <div className="border border-white/10 rounded-2xl overflow-y-auto max-h-[46vh] glass-panel">
+              <TradingBotDashboard
+                isActive={true}
+                onSwitchMarket={handleSelectMarket}
+              />
             </div>
           </div>
         ) : (
           <>
-            {/* Auto-Collapsing Empty-State Dock: Full-Width Canvas when Blotter is Empty */}
-            <div className="px-3 pt-2 bg-[#04070D]">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-mono font-bold text-slate-300">
-                  OMNI-MARKET L2/L3 DEPTH ENGINE &amp; VIRTUALIZED OMS BLOTTER
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBlotterExpanded((p) => !p)}
-                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-white/10 text-slate-300 hover:text-white"
-                  >
-                    {blotterExpanded ? "COLLAPSE BLOTTER [−]" : `EXPAND BLOTTER (${orders.length}) [⤢]`}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowDockDrawer((p) => !p)}
-                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-white/10 text-slate-400 hover:text-white"
-                  >
-                    {showDockDrawer ? "HIDE DOCK [-]" : "SHOW DOCK [+]"}
-                  </button>
-                </div>
+            {visitedMarkets.home && (
+              <div
+                data-testid="market-panel-home"
+                className={activeMarket === "home" ? "block" : "hidden"}
+              >
+                <CommandOverviewPortal
+                  onSelectMarket={handleSelectMarket}
+                  onOpenOrderTicket={(sym) => {
+                    const st = terminalStore.getState();
+                    terminalStore.updateImmediate({
+                      quickTicketOpen: true,
+                      activeBookSymbol: sym || st.activeBookSymbol,
+                    });
+                  }}
+                />
               </div>
-              {showDockDrawer && (
-                <div
-                  className={`grid gap-2 mb-2 ${
-                    blotterExpanded ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"
-                  }`}
-                >
-                  <WebGlOrderBookCanvas />
-                  {blotterExpanded ? (
-                    <VirtualizedGlobalBlotter />
-                  ) : (
-                    <div className="flex items-center justify-between px-3 py-1 rounded bg-[#080E1A] border border-white/5 font-mono text-[10px] text-slate-500">
-                      <span>OMS BLOTTER: 0 ACTIVE ORDERS (Tape Idle)</span>
-                      <button
-                        type="button"
-                        onClick={() => setBlotterExpanded(true)}
-                        className="text-slate-400 hover:text-white underline cursor-pointer"
-                      >
-                        Click to Expand OMS Blotter
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            )}
 
             {visitedMarkets.jse && (
               <div
@@ -388,6 +380,7 @@ export const App: React.FC = () => {
                   isActive={activeMarket === "jse"}
                   onSwitchMarket={handleSelectMarket}
                   onWsStatusChange={handleJseWs}
+                  onOpenBot={() => handleSelectMarket("bot")}
                 />
               </div>
             )}
@@ -401,6 +394,7 @@ export const App: React.FC = () => {
                   isActive={activeMarket === "us"}
                   onSwitchMarket={handleSelectMarket}
                   onWsStatusChange={handleUsWs}
+                  onOpenBot={() => handleSelectMarket("bot")}
                 />
               </div>
             )}
@@ -414,6 +408,19 @@ export const App: React.FC = () => {
                   isActive={activeMarket === "crypto"}
                   onSwitchMarket={handleSelectMarket}
                   onWsStatusChange={handleCryptoWs}
+                  onOpenBot={() => handleSelectMarket("bot")}
+                />
+              </div>
+            )}
+
+            {visitedMarkets.bot && (
+              <div
+                data-testid="market-panel-bot"
+                className={activeMarket === "bot" ? "block" : "hidden"}
+              >
+                <TradingBotDashboard
+                  isActive={activeMarket === "bot"}
+                  onSwitchMarket={handleSelectMarket}
                 />
               </div>
             )}

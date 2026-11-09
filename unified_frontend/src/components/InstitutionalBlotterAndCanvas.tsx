@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
-  AlertOctagon,
   Cpu,
   Flame,
   Layers,
@@ -10,6 +9,7 @@ import {
   VolumeX,
   Zap,
 } from "lucide-react";
+import { HoldToConfirmPanic } from "./GlobalMarketNav";
 import {
   BlotterOrder,
   NormalizedOrderBook,
@@ -734,15 +734,7 @@ export const InstitutionalTelemetryStrip: React.FC<{
           <span className="hidden sm:inline">{audioMuted ? "MUTED" : "SYNTH"}</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => terminalStore.triggerEmergencyPanicFlatten()}
-          className="px-2.5 py-0.5 rounded bg-[#ef4444] text-white font-extrabold hover:brightness-110 flex items-center gap-1 shadow-sm"
-          title="Shift+Esc Emergency Cross-Market Panic Flatten"
-        >
-          <AlertOctagon className="w-3.5 h-3.5" />
-          PANIC FLATTEN [SHIFT+ESC]
-        </button>
+        <HoldToConfirmPanic />
       </div>
     </div>
   );

@@ -352,12 +352,14 @@ export interface CryptoMarketAppProps {
   isActive?: boolean;
   onSwitchMarket?: (market: "jse" | "us" | "crypto") => void;
   onWsStatusChange?: (connected: boolean, lastTick?: string) => void;
+  onOpenBot?: () => void;
 }
 
 export const App: React.FC<CryptoMarketAppProps> = ({
   isActive = true,
   onSwitchMarket,
   onWsStatusChange,
+  onOpenBot,
 }) => {
   const [state, setState] = useState<TerminalState | null>(null);
   const [feeProfileId, setFeeProfileId] = useState<string>("BINANCE_BYBIT_SPOT");
@@ -815,7 +817,7 @@ export const App: React.FC<CryptoMarketAppProps> = ({
         onOpenCompoundingModal={() => setCompoundingOpen(true)}
         onOpenWatchlistModal={() => setWatchlistOpen(true)}
         onOpenTelegramModal={() => setTelegramOpen(true)}
-        onOpenAutonomousBotModal={() => setBotModalOpen(true)}
+        onOpenAutonomousBotModal={() => (onOpenBot ? onOpenBot() : setBotModalOpen(true))}
         antiTiltTriggered={antiTiltTriggered}
       />
 
